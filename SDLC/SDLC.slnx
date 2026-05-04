@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SDLC.Agents/SDLC.Agents.csproj" />
+    <Project Path="src/SDLC.Contracts/SDLC.Contracts.csproj" />
+    <Project Path="src/SDLC.Dashboard/SDLC.Dashboard.csproj" />
+    <Project Path="src/SDLC.Infrastructure/SDLC.Infrastructure.csproj" />
+    <Project Path="src/SDLC.Notifications/SDLC.Notifications.csproj" />
+    <Project Path="src/SDLC.Orchestrator/SDLC.Orchestrator.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SDLC.Agents.Tests/SDLC.Agents.Tests.csproj" />
+    <Project Path="tests/SDLC.Contracts.Tests/SDLC.Contracts.Tests.csproj" />
+    <Project Path="tests/SDLC.Dashboard.Tests/SDLC.Dashboard.Tests.csproj" />
+    <Project Path="tests/SDLC.Infrastructure.Tests/SDLC.Infrastructure.Tests.csproj" />
+    <Project Path="tests/SDLC.Integration.Tests/SDLC.Integration.Tests.csproj" />
+    <Project Path="tests/SDLC.Notifications.Tests/SDLC.Notifications.Tests.csproj" />
+    <Project Path="tests/SDLC.Orchestrator.Tests/SDLC.Orchestrator.Tests.csproj" />
+  </Folder>
+</Solution>
