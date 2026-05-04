@@ -8,7 +8,7 @@ public abstract record SdlcArtifact
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public ArtifactStatus Status { get; init; } = ArtifactStatus.Draft;
     public string? HumanNotes  { get; init; }
-    public string? Content     { get; init; }
+    public string Content     { get; init; } = "";
 }
 
 public record ResearchBrief       : SdlcArtifact { }
