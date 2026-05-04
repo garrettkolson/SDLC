@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem D:ReposSDLC *)",
+      "Bash(dotnet new classlib *)",
+      "Bash(dotnet new nunit *)",
+      "Bash(dotnet sln *)",
+      "Bash(dotnet add *)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)"
+    ]
+  }
+}
