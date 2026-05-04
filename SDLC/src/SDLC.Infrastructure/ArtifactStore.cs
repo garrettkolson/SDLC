@@ -47,8 +47,8 @@ public class ArtifactStore : IArtifactStore
             {
                 artifact.ArtifactId,
                 artifact.RunId,
-                artifact.Stage.ToString(),
-                artifact.Status.ToString(),
+                Stage = artifact.Stage.ToString(),
+                Status = artifact.Status.ToString(),
                 FilePath = path,
                 artifact.CreatedAt
             });
@@ -59,7 +59,7 @@ public class ArtifactStore : IArtifactStore
         await using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
         var row = await conn.QueryFirstOrDefaultAsync("""
-            SELECT file_path, stage, status, created_at FROM artifacts WHERE artifact_id = @Id
+            SELECT artifact_id, file_path, stage, status, created_at FROM artifacts WHERE artifact_id = @Id
             """, new { Id = artifactId.ToString() });
 
         if (row == null) return null;
@@ -72,16 +72,25 @@ public class ArtifactStore : IArtifactStore
     {
         await using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
+        var stageStr = typeof(T).Name switch
+        {
+            "ResearchBrief" => "Research",
+            "RequirementsSpec" => "Requirements",
+            "ArchitectureRecord" => "Design",
+            "BuildResult" => "Build",
+            "LearnReport" => "Learn",
+            _ => throw new NotSupportedException()
+        };
         var row = await conn.QueryFirstOrDefaultAsync("""
-            SELECT file_path, stage, status, created_at FROM artifacts
+            SELECT artifact_id, file_path, stage, status, created_at FROM artifacts
             WHERE run_id = @RunId AND stage = @Stage
             ORDER BY created_at DESC LIMIT 1
-            """, new { RunId = runId.ToString(), Stage = typeof(T).Name.Replace("Record", "").Replace("Brief", "").Replace("Spec", "") });
+            """, new { RunId = runId.ToString(), Stage = stageStr });
 
         if (row == null) return null;
 
         var content = await File.ReadAllTextAsync(row.file_path);
-        return (T)CreateArtifact(typeof(T), Guid.Parse(row.file_path.Split('_').Last()), content, row.stage, row.status, row.created_at);
+        return (T)CreateArtifact(typeof(T), Guid.Parse(row.artifact_id), content, row.stage, row.status, row.created_at);
     }
 
     public async Task UpdateStatusAsync(Guid artifactId, ArtifactStatus status)
@@ -116,7 +125,7 @@ public class ArtifactStore : IArtifactStore
         await using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
         var rows = await conn.QueryAsync("""
-            SELECT file_path, stage, status, created_at FROM artifacts
+            SELECT artifact_id, file_path, stage, status, created_at FROM artifacts
             WHERE run_id = @RunId ORDER BY
                 CASE stage
                     WHEN 'Research' THEN 1
@@ -131,9 +140,21 @@ public class ArtifactStore : IArtifactStore
         foreach (var row in rows)
         {
             var content = await File.ReadAllTextAsync(row.file_path);
-            // Simplified - we return base SdlcArtifact since we can't know the concrete type from metadata alone
-            var artifactId = Guid.Parse(row.file_path.Split('/').Last().Replace(".md", ""));
-            result.Add(new SdlcArtifactStub { ArtifactId = artifactId, Content = content, Stage = (SdlcStage)Enum.Parse(typeof(SdlcStage), row.stage), Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), row.status), CreatedAt = DateTimeOffset.Parse(row.created_at), RunId = runId });
+            var artifactId = Guid.Parse(row.artifact_id);
+            var stage = (SdlcStage)Enum.Parse(typeof(SdlcStage), row.stage);
+            var status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), row.status);
+            var createdAt = DateTimeOffset.Parse(row.created_at);
+
+            SdlcArtifact artifact = row.stage switch
+            {
+                "Research" => (SdlcArtifact)new ResearchBrief { ArtifactId = artifactId, Content = content, Stage = stage, Status = status, CreatedAt = createdAt, RunId = runId },
+                "Requirements" => (SdlcArtifact)new RequirementsSpec { ArtifactId = artifactId, Content = content, Stage = stage, Status = status, CreatedAt = createdAt, RunId = runId },
+                "Design" => (SdlcArtifact)new ArchitectureRecord { ArtifactId = artifactId, Content = content, Stage = stage, Status = status, CreatedAt = createdAt, RunId = runId },
+                "Build" => (SdlcArtifact)new BuildResult { ArtifactId = artifactId, Stage = stage, Status = status, CreatedAt = createdAt, RunId = runId },
+                "Learn" => (SdlcArtifact)new LearnReport { ArtifactId = artifactId, Stage = stage, Status = status, CreatedAt = createdAt, RunId = runId },
+                _ => throw new NotSupportedException($"Unknown stage: {row.stage}")
+            };
+            result.Add(artifact);
         }
         return result;
     }
@@ -144,17 +165,12 @@ public class ArtifactStore : IArtifactStore
     {
         return type.Name switch
         {
-            "ResearchBrief" => new ResearchBrief { ArtifactId = artifactId, Content = content, Stage = SdlcStage.Research, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
-            "RequirementsSpec" => new RequirementsSpec { ArtifactId = artifactId, Content = content, Stage = SdlcStage.Requirements, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
-            "ArchitectureRecord" => new ArchitectureRecord { ArtifactId = artifactId, Content = content, Stage = SdlcStage.Design, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
-            "BuildResult" => new BuildResult { ArtifactId = artifactId, Content = content, Stage = SdlcStage.Build, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
-            "LearnReport" => new LearnReport { ArtifactId = artifactId, Content = content, Stage = SdlcStage.Learn, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
+            "ResearchBrief" => (SdlcArtifact)new ResearchBrief { ArtifactId = artifactId, Content = content, Stage = SdlcStage.Research, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
+            "RequirementsSpec" => (SdlcArtifact)new RequirementsSpec { ArtifactId = artifactId, Content = content, Stage = SdlcStage.Requirements, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
+            "ArchitectureRecord" => (SdlcArtifact)new ArchitectureRecord { ArtifactId = artifactId, Content = content, Stage = SdlcStage.Design, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
+            "BuildResult" => (SdlcArtifact)new BuildResult { ArtifactId = artifactId, Stage = SdlcStage.Build, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
+            "LearnReport" => (SdlcArtifact)new LearnReport { ArtifactId = artifactId, Stage = SdlcStage.Learn, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
             _ => throw new NotSupportedException($"Unknown artifact type: {type.Name}")
         };
     }
-}
-
-public record SdlcArtifactStub : SdlcArtifact
-{
-    public string Content { get; init; } = "";
 }
