@@ -1,5 +1,3 @@
-using Dapper;
-using Microsoft.Data.Sqlite;
 using SDLC.Contracts;
 
 namespace SDLC.Infrastructure;
@@ -15,9 +13,9 @@ public class StageGateStore
 
     public async Task InitializeAsync()
     {
-        await using var conn = new SqliteConnection(_connectionString);
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         await conn.OpenAsync();
-        await conn.ExecuteAsync("""
+        await using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(@"
             CREATE TABLE IF NOT EXISTS gates (
                 gate_id TEXT PRIMARY KEY,
                 run_id TEXT NOT NULL,
@@ -28,8 +26,8 @@ public class StageGateStore
                 artifact_content TEXT,
                 artifact_type TEXT,
                 created_at TEXT NOT NULL
-            )
-            """);
+            )", conn);
+        await cmd.ExecuteNonQueryAsync();
     }
 
     public async Task<StageGate> CreateGateAsync(SdlcArtifact artifact)
@@ -42,86 +40,89 @@ public class StageGateStore
             Artifact = artifact
         };
 
-        await using var conn = new SqliteConnection(_connectionString);
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         await conn.OpenAsync();
-        await conn.ExecuteAsync("""
+        await using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(@"
             INSERT INTO gates (gate_id, run_id, stage, status, artifact_content, artifact_type, created_at)
-            VALUES (@GateId, @RunId, @Stage, @Status, @ArtifactContent, @ArtifactType, @CreatedAt)
-            """, new
-            {
-                GateId = gate.GateId,
-                gate.RunId,
-                Stage = gate.Stage.ToString(),
-                Status = gate.Status.ToString(),
-                ArtifactContent = artifact.Content,
-                ArtifactType = artifact.GetType().Name,
-                CreatedAt = DateTimeOffset.UtcNow
-            });
+            VALUES (@gate_id, @run_id, @stage, @status, @artifact_content, @artifact_type, @created_at)", conn);
+        cmd.Parameters.AddWithValue("@gate_id", gate.GateId.ToString());
+        cmd.Parameters.AddWithValue("@run_id", gate.RunId.ToString());
+        cmd.Parameters.AddWithValue("@stage", gate.Stage.ToString());
+        cmd.Parameters.AddWithValue("@status", gate.Status.ToString());
+        cmd.Parameters.AddWithValue("@artifact_content", (object?)artifact.Content ?? "");
+        cmd.Parameters.AddWithValue("@artifact_type", artifact.GetType().Name);
+        cmd.Parameters.AddWithValue("@created_at", DateTimeOffset.UtcNow.ToString("o"));
+        await cmd.ExecuteNonQueryAsync();
 
         return gate;
     }
 
     public async Task<StageGate?> GetAsync(Guid gateId)
     {
-        await using var conn = new SqliteConnection(_connectionString);
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         await conn.OpenAsync();
-        var row = await conn.QueryFirstOrDefaultAsync("""
-            SELECT * FROM gates WHERE gate_id = @Id
-            """, new { Id = gateId.ToString() });
+        await using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(@"
+            SELECT gate_id, run_id, stage, status, notes, resolved_at, artifact_content, artifact_type
+            FROM gates WHERE gate_id = @id", conn);
+        cmd.Parameters.AddWithValue("@id", gateId.ToString());
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) return null;
 
-        if (row == null) return null;
-
-        return CreateGate(row);
+        return ReadGate(reader);
     }
 
     public async Task ResolveAsync(Guid gateId, GateDecision decision, string? notes)
     {
-        await using var conn = new SqliteConnection(_connectionString);
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         await conn.OpenAsync();
-        await conn.ExecuteAsync("""
-            UPDATE gates
-            SET status = @Status, notes = @Notes, resolved_at = @ResolvedAt
-            WHERE gate_id = @Id
-            """, new
-            {
-                Id = gateId.ToString(),
-                Status = decision.ToString(),
-                Notes = notes,
-                ResolvedAt = DateTimeOffset.UtcNow
-            });
+        await using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(@"
+            UPDATE gates SET status = @status, notes = @notes, resolved_at = @resolved_at
+            WHERE gate_id = @id", conn);
+        cmd.Parameters.AddWithValue("@status", decision.ToString());
+        cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@resolved_at", DateTimeOffset.UtcNow.ToString("o"));
+        cmd.Parameters.AddWithValue("@id", gateId.ToString());
+        await cmd.ExecuteNonQueryAsync();
     }
 
     public async Task<List<StageGate>> GetPendingForRunAsync(Guid runId)
     {
-        await using var conn = new SqliteConnection(_connectionString);
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         await conn.OpenAsync();
-        var rows = await conn.QueryAsync("""
-            SELECT * FROM gates WHERE run_id = @RunId AND status = 'Pending'
-            """, new { RunId = runId.ToString() });
-
-        return [.. rows.Select(CreateGate)];
+        await using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(@"
+            SELECT gate_id, run_id, stage, status, notes, resolved_at, artifact_content, artifact_type
+            FROM gates WHERE run_id = @run_id AND status = 'Pending'", conn);
+        cmd.Parameters.AddWithValue("@run_id", runId.ToString());
+        await using var reader = await cmd.ExecuteReaderAsync();
+        var gates = new List<StageGate>();
+        while (await reader.ReadAsync())
+            gates.Add(ReadGate(reader));
+        return gates;
     }
 
-    private StageGate CreateGate(dynamic row)
+    private static StageGate ReadGate(Microsoft.Data.Sqlite.SqliteDataReader reader)
     {
-        SdlcArtifact? artifact = row.artifact_type switch
+        string artifactType = reader.GetString(reader.GetOrdinal("artifact_type"));
+        SdlcArtifact? artifact = artifactType switch
         {
-            "ResearchBrief" => new ResearchBrief { Content = row.artifact_content },
-            "RequirementsSpec" => new RequirementsSpec { Content = row.artifact_content },
-            "ArchitectureRecord" => new ArchitectureRecord { Content = row.artifact_content },
+            "ResearchBrief" => new ResearchBrief { Content = reader["artifact_content"] as string },
+            "RequirementsSpec" => new RequirementsSpec { Content = reader["artifact_content"] as string },
+            "ArchitectureRecord" => new ArchitectureRecord { Content = reader["artifact_content"] as string },
             "BuildResult" => new BuildResult(),
             "LearnReport" => new LearnReport(),
             _ => null
         };
 
+        int resolvedIdx = reader.GetOrdinal("resolved_at");
+
         return new StageGate
         {
-            GateId = Guid.Parse(row.gate_id),
-            RunId = Guid.Parse(row.run_id),
-            Stage = (SdlcStage)Enum.Parse(typeof(SdlcStage), row.stage),
-            Status = (GateStatus)Enum.Parse(typeof(GateStatus), row.status),
-            Notes = row.notes,
-            ResolvedAt = row.resolved_at != null ? DateTimeOffset.Parse(row.resolved_at) : null,
+            GateId = Guid.Parse(reader.GetString(reader.GetOrdinal("gate_id"))),
+            RunId = Guid.Parse(reader.GetString(reader.GetOrdinal("run_id"))),
+            Stage = (SdlcStage)Enum.Parse(typeof(SdlcStage), reader.GetString(reader.GetOrdinal("stage"))),
+            Status = (GateStatus)Enum.Parse(typeof(GateStatus), reader.GetString(reader.GetOrdinal("status"))),
+            Notes = reader["notes"] as string,
+            ResolvedAt = reader.IsDBNull(resolvedIdx) ? null : DateTimeOffset.Parse(reader.GetString(resolvedIdx)),
             Artifact = artifact
         };
     }
