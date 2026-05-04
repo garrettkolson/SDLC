@@ -105,9 +105,9 @@ public class StageGateStore
         string artifactType = reader.GetString(reader.GetOrdinal("artifact_type"));
         SdlcArtifact? artifact = artifactType switch
         {
-            "ResearchBrief" => new ResearchBrief { Content = reader["artifact_content"] as string },
-            "RequirementsSpec" => new RequirementsSpec { Content = reader["artifact_content"] as string },
-            "ArchitectureRecord" => new ArchitectureRecord { Content = reader["artifact_content"] as string },
+            "ResearchBrief" => new ResearchBrief { Content = reader["artifact_content"] as string ?? "" },
+            "RequirementsSpec" => new RequirementsSpec { Content = reader["artifact_content"] as string ?? "" },
+            "ArchitectureRecord" => new ArchitectureRecord { Content = reader["artifact_content"] as string ?? "" },
             "BuildResult" => new BuildResult(),
             "LearnReport" => new LearnReport(),
             _ => null
