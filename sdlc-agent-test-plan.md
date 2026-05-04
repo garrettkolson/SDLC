@@ -1,5 +1,5 @@
 # SDLC Agent — Comprehensive TDD Test Plan
-**SmallWerks.SDLC | .NET + Semantic Kernel | Agent-Executable**
+**SDLC | .NET + Semantic Kernel | Agent-Executable**
 
 ---
 
@@ -24,20 +24,20 @@ All test projects use:
 
 ```
 tests/
-├── SmallWerks.SDLC.Contracts.Tests/
-├── SmallWerks.SDLC.Infrastructure.Tests/
-├── SmallWerks.SDLC.Agents.Tests/
-├── SmallWerks.SDLC.Orchestrator.Tests/
-├── SmallWerks.SDLC.Notifications.Tests/
-├── SmallWerks.SDLC.Dashboard.Tests/
-└── SmallWerks.SDLC.Integration.Tests/
+├── SDLC.Contracts.Tests/
+├── SDLC.Infrastructure.Tests/
+├── SDLC.Agents.Tests/
+├── SDLC.Orchestrator.Tests/
+├── SDLC.Notifications.Tests/
+├── SDLC.Dashboard.Tests/
+└── SDLC.Integration.Tests/
 ```
 
 ---
 
 ## Phase 1 — Contracts & Domain Model
 
-**Project:** `SmallWerks.SDLC.Contracts.Tests`
+**Project:** `SDLC.Contracts.Tests`
 **Extra packages:** none beyond base set
 
 ---
@@ -252,7 +252,7 @@ public class ModelEndpointTests
 
 ## Phase 2 — Infrastructure
 
-**Project:** `SmallWerks.SDLC.Infrastructure.Tests`
+**Project:** `SDLC.Infrastructure.Tests`
 **Extra packages:** `Microsoft.Data.Sqlite`, `Dapper`, `Microsoft.Extensions.Logging.Abstractions`
 
 ---
@@ -745,7 +745,7 @@ public class SweAfPayloadBuilderTests
 
 ## Phase 3 — Orchestrator
 
-**Project:** `SmallWerks.SDLC.Orchestrator.Tests`
+**Project:** `SDLC.Orchestrator.Tests`
 **Extra packages:** `Microsoft.SemanticKernel.Process.Runtime.InProcess`
 
 ---
@@ -961,7 +961,7 @@ public class SdlcEventsTests
 
 ## Phase 4 — Agents
 
-**Project:** `SmallWerks.SDLC.Agents.Tests`
+**Project:** `SDLC.Agents.Tests`
 **Extra packages:** `Microsoft.SemanticKernel.Agents.Core`
 
 > **Agent test strategy:** Agent steps are tested against a **fake/stub kernel** that returns canned LLM responses. We do not make real LLM calls in unit tests. Integration tests (Phase 7) run against the local vLLM endpoint.
@@ -1236,7 +1236,7 @@ public class PromptBuilderTests
 
 ## Phase 5 — Notifications
 
-**Project:** `SmallWerks.SDLC.Notifications.Tests`
+**Project:** `SDLC.Notifications.Tests`
 **Extra packages:** `WireMock.Net`
 
 ---
@@ -1347,7 +1347,7 @@ public class SlackNotificationServiceTests : IAsyncLifetime
 
 ## Phase 6 — Dashboard (Blazor)
 
-**Project:** `SmallWerks.SDLC.Dashboard.Tests`
+**Project:** `SDLC.Dashboard.Tests`
 **Extra packages:** `bunit`, `Microsoft.AspNetCore.Mvc.Testing`
 
 ---
@@ -1587,7 +1587,7 @@ public class RunsControllerTests : IClassFixture<WebApplicationFactory<Program>>
 
 ## Phase 7 — Integration Tests
 
-**Project:** `SmallWerks.SDLC.Integration.Tests`
+**Project:** `SDLC.Integration.Tests`
 **Extra packages:** `Microsoft.AspNetCore.Mvc.Testing`, `WireMock.Net`, `Testcontainers`
 
 > These tests require Docker. They are tagged `[Trait("Category", "Integration")]` and excluded from default test runs. Run with: `dotnet test --filter Category=Integration`
@@ -1869,7 +1869,7 @@ public class FullPipelineIntegrationTests : IAsyncLifetime
 
 ## Phase 8 — Telemetry
 
-**Project:** `SmallWerks.SDLC.Infrastructure.Tests` (add to existing)
+**Project:** `SDLC.Infrastructure.Tests` (add to existing)
 
 ---
 
@@ -1885,7 +1885,7 @@ public class SdlcTelemetryTests
     {
         using var listener = new ActivityListener
         {
-            ShouldListenTo      = source => source.Name.StartsWith("SmallWerks.SDLC"),
+            ShouldListenTo      = source => source.Name.StartsWith("SDLC"),
             Sample              = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
             ActivityStarted     = _ => { },
             ActivityStopped     = _ => { }
@@ -1904,7 +1904,7 @@ public class SdlcTelemetryTests
     {
         using var listener = new ActivityListener
         {
-            ShouldListenTo      = source => source.Name.StartsWith("SmallWerks.SDLC"),
+            ShouldListenTo      = source => source.Name.StartsWith("SDLC"),
             Sample              = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
             ActivityStarted     = _ => { },
             ActivityStopped     = _ => { }

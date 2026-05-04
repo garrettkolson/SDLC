@@ -49,26 +49,26 @@
 ## 2. Solution Structure
 
 ```
-SmallWerks.SDLC/
+SDLC/
 ├── src/
-│   ├── SmallWerks.SDLC.Orchestrator/        # SK Process engine, pipeline runner
-│   ├── SmallWerks.SDLC.Dashboard/           # Blazor Server UI
-│   ├── SmallWerks.SDLC.Agents/              # All stage agent implementations
+│   ├── SDLC.Orchestrator/        # SK Process engine, pipeline runner
+│   ├── SDLC.Dashboard/           # Blazor Server UI
+│   ├── SDLC.Agents/              # All stage agent implementations
 │   │   ├── Research/
 │   │   ├── Requirements/
 │   │   ├── Design/
 │   │   ├── Build/
 │   │   └── Learn/
-│   ├── SmallWerks.SDLC.Contracts/           # Shared types, artifact models, events
-│   ├── SmallWerks.SDLC.Infrastructure/      # SK kernel factory, HTTP clients, OTel setup
-│   └── SmallWerks.SDLC.Notifications/       # Slack / Teams webhook integration
+│   ├── SDLC.Contracts/           # Shared types, artifact models, events
+│   ├── SDLC.Infrastructure/      # SK kernel factory, HTTP clients, OTel setup
+│   └── SDLC.Notifications/       # Slack / Teams webhook integration
 ├── docker/
 │   ├── docker-compose.yml
 │   └── aspire-dashboard/
 ├── tests/
-│   ├── SmallWerks.SDLC.Agents.Tests/
-│   └── SmallWerks.SDLC.Orchestrator.Tests/
-└── SmallWerks.SDLC.sln
+│   ├── SDLC.Agents.Tests/
+│   └── SDLC.Orchestrator.Tests/
+└── SDLC.sln
 ```
 
 ### Key NuGet Dependencies
@@ -92,7 +92,7 @@ SmallWerks.SDLC/
 Every stage produces a typed artifact that flows through the pipeline. All artifacts share a base contract and are persisted to the store.
 
 ```csharp
-// SmallWerks.SDLC.Contracts
+// SDLC.Contracts
 
 public abstract record SdlcArtifact
 {
@@ -126,7 +126,7 @@ public enum ArtifactStatus { Draft, PendingReview, Approved, Rejected }
 The SK Process Framework handles the durable state machine. Each stage is a `KernelProcessStep`. Stage gates are external event suspension points.
 
 ```csharp
-// SmallWerks.SDLC.Orchestrator/SdlcProcess.cs
+// SDLC.Orchestrator/SdlcProcess.cs
 
 public static class SdlcProcess
 {
@@ -220,7 +220,7 @@ Each stage is a `ChatCompletionAgent` hosted inside its SK Process step. The ker
 ### Agent Kernel Factory
 
 ```csharp
-// SmallWerks.SDLC.Infrastructure/AgentKernelFactory.cs
+// SDLC.Infrastructure/AgentKernelFactory.cs
 
 public class AgentKernelFactory
 {
@@ -573,12 +573,12 @@ Teams integration uses an equivalent Adaptive Card with `openUrl` actions pointi
 // Program.cs (Orchestrator and Dashboard both register this)
 builder.Services.AddOpenTelemetry()
     .WithTracing(tracing => tracing
-        .AddSource("SmallWerks.SDLC.*")          // all SK + custom activities
+        .AddSource("SDLC.*")          // all SK + custom activities
         .AddHttpClientInstrumentation()
         .AddAspNetCoreInstrumentation()
         .AddOtlpExporter(o => o.Endpoint = new Uri("http://aspire-dashboard:18889")))
     .WithMetrics(metrics => metrics
-        .AddMeter("SmallWerks.SDLC.*")
+        .AddMeter("SDLC.*")
         .AddRuntimeInstrumentation()
         .AddOtlpExporter(o => o.Endpoint = new Uri("http://aspire-dashboard:18889")))
     .WithLogging(logging => logging
@@ -590,8 +590,8 @@ builder.Services.AddOpenTelemetry()
 ```csharp
 public static class SdlcTelemetry
 {
-    private static readonly ActivitySource Source = new("SmallWerks.SDLC.Pipeline");
-    private static readonly Meter Meter = new("SmallWerks.SDLC.Pipeline");
+    private static readonly ActivitySource Source = new("SDLC.Pipeline");
+    private static readonly Meter Meter = new("SDLC.Pipeline");
 
     public static readonly Counter<long> RunsStarted    = Meter.CreateCounter<long>("sdlc.runs.started");
     public static readonly Counter<long> RunsCompleted  = Meter.CreateCounter<long>("sdlc.runs.completed");
@@ -632,7 +632,7 @@ services:
 
   orchestrator:
     build:
-      context: ../src/SmallWerks.SDLC.Orchestrator
+      context: ../src/SDLC.Orchestrator
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
       SWEAF__BaseUrl: http://host.docker.internal:5100   # SWE-AF HTTP API
@@ -646,7 +646,7 @@ services:
 
   dashboard:
     build:
-      context: ../src/SmallWerks.SDLC.Dashboard
+      context: ../src/SDLC.Dashboard
     ports:
       - "5200:8080"
     environment:
