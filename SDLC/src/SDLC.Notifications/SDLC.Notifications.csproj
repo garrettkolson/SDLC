@@ -6,4 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\SDLC.Contracts\SDLC.Contracts.csproj" />
+    <ProjectReference Include="..\SDLC.Infrastructure\SDLC.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>
