@@ -40,17 +40,18 @@ public class PipelineRunnerService
 
     public int ActiveRunCount => _activeRuns.Count;
 
-    public bool IsRunActive(Guid runId) => _activeRuns.ContainsKey(runId);
+    public virtual bool IsRunActive(Guid runId) => _activeRuns.ContainsKey(runId);
 
-    public async Task EnqueueAsync(SdlcRunConfig config, CancellationToken ct = default)
+    public virtual Task EnqueueAsync(SdlcRunConfig config, CancellationToken ct = default)
     {
         if (!_activeRuns.TryAdd(config.RunId, new object()))
             throw new InvalidOperationException($"Run {config.RunId} is already active.");
 
         _logger.LogInformation("Starting SDLC run {RunId}", config.RunId);
+        return Task.CompletedTask;
     }
 
-    public async Task ResumeGateAsync(Guid runId, Guid gateId, GateDecision decision, string? notes, CancellationToken ct = default)
+    public virtual async Task ResumeGateAsync(Guid runId, Guid gateId, GateDecision decision, string? notes, CancellationToken ct = default)
     {
         if (!_activeRuns.ContainsKey(runId))
             throw new InvalidOperationException($"No active run for {runId}");
