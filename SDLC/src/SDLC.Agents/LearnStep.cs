@@ -1,5 +1,6 @@
 using SDLC.Contracts;
 using SDLC.Infrastructure;
+using SDLC.Telemetry;
 
 namespace SDLC.Agents;
 
@@ -14,39 +15,57 @@ public class LearnStep
         BuildResult buildResult,
         IKernelFactory kernelFactory,
         IArtifactStore artifacts,
+        IPipelineTelemetry? telemetry = null,
         CancellationToken ct = default)
     {
-        var kernel = kernelFactory.CreateForStage(SdlcStage.Learn);
-        var history = new List<string> { LearnPrompts.BuildPrompt(config.ProjectBrief, buildResult.Logs, spec.Content) };
-
-        LearnReport? report = null;
-        var lastAiResponse = "";
-
-        for (var attempt = 0; attempt < MaxAttempts; attempt++)
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
         {
-            var response = await kernel.CompleteAsync(LearnPrompts.SystemPrompt, string.Join("\n", history), ct);
-            lastAiResponse = response;
-            history.Add($"AI: {response}");
+            var kernel = kernelFactory.CreateForStage(SdlcStage.Learn);
+            var history = new List<string> { LearnPrompts.BuildPrompt(config.ProjectBrief, buildResult.Logs, spec.Content) };
 
-            var critique = await kernel.CompleteAsync(LearnPrompts.CritiquePrompt, response, ct);
+            LearnReport? report = null;
+            var lastAiResponse = "";
 
-            if (LearnPrompts.IsSatisfactory(critique))
+            for (var attempt = 0; attempt < MaxAttempts; attempt++)
             {
-                report = new LearnReport
+                var response = await kernel.CompleteAsync(LearnPrompts.SystemPrompt, string.Join("\n", history), ct);
+                lastAiResponse = response;
+                history.Add($"AI: {response}");
+
+                var critique = await kernel.CompleteAsync(LearnPrompts.CritiquePrompt, response, ct);
+
+                if (LearnPrompts.IsSatisfactory(critique))
                 {
-                    Content = response,
-                    Retrospective = response,
-                    RunId = config.RunId,
-                    Stage = SdlcStage.Learn
-                };
-                break;
+                    report = new LearnReport
+                    {
+                        Content = response,
+                        Retrospective = response,
+                        RunId = config.RunId,
+                        Stage = SdlcStage.Learn
+                    };
+                    break;
+                }
+                history.Add($"Critique: {critique}");
             }
-            history.Add($"Critique: {critique}");
+
+            report ??= new LearnReport { Content = lastAiResponse, Retrospective = lastAiResponse, RunId = config.RunId, Stage = SdlcStage.Learn };
+
+            await artifacts.SaveAsync(report);
+            await context.EmitEventAsync(new KernelProcessEvent { Id = SdlcEvents.LearnComplete, Data = report }, ct);
+            if (telemetry != null)
+                await telemetry.RecordStepCompletedAsync(SdlcStage.Learn, nameof(LearnStep), ct);
         }
-
-        report ??= new LearnReport { Content = lastAiResponse, Retrospective = lastAiResponse, RunId = config.RunId, Stage = SdlcStage.Learn };
-
-        await artifacts.SaveAsync(report);
-        await context.EmitEventAsync(new KernelProcessEvent { Id = SdlcEvents.LearnComplete, Data = report }, ct);
+        catch (Exception ex)
+        {
+            if (telemetry != null)
+                await telemetry.RecordStepFailedAsync(SdlcStage.Learn, nameof(LearnStep), ex, ct);
+            throw;
+        }
+        finally
+        {
+            sw.Stop();
+            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds, new KeyValuePair<string, object?>[] { new("sdlc.stage", "Learn") });
+        }
     }
 }

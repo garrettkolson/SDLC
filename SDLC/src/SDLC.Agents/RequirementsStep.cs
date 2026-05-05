@@ -1,5 +1,6 @@
 using SDLC.Contracts;
 using SDLC.Infrastructure;
+using SDLC.Telemetry;
 
 namespace SDLC.Agents;
 
@@ -13,33 +14,51 @@ public class RequirementsStep
         ResearchBrief research,
         IKernelFactory kernelFactory,
         IArtifactStore artifacts,
+        IPipelineTelemetry? telemetry = null,
         CancellationToken ct = default)
     {
-        var kernel = kernelFactory.CreateForStage(SdlcStage.Requirements);
-        var history = new List<string> { RequirementsPrompts.BuildPrompt(config.ProjectBrief, research.Content) };
-
-        RequirementsSpec? spec = null;
-        var lastAiResponse = "";
-
-        for (var attempt = 0; attempt < MaxAttempts; attempt++)
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
         {
-            var response = await kernel.CompleteAsync(RequirementsPrompts.SystemPrompt, string.Join("\n", history), ct);
-            lastAiResponse = response;
-            history.Add($"AI: {response}");
+            var kernel = kernelFactory.CreateForStage(SdlcStage.Requirements);
+            var history = new List<string> { RequirementsPrompts.BuildPrompt(config.ProjectBrief, research.Content) };
 
-            var critique = await kernel.CompleteAsync(RequirementsPrompts.CritiquePrompt, response, ct);
+            RequirementsSpec? spec = null;
+            var lastAiResponse = "";
 
-            if (RequirementsPrompts.IsSatisfactory(critique))
+            for (var attempt = 0; attempt < MaxAttempts; attempt++)
             {
-                spec = new RequirementsSpec { Content = response, RunId = config.RunId, Stage = SdlcStage.Requirements };
-                break;
+                var response = await kernel.CompleteAsync(RequirementsPrompts.SystemPrompt, string.Join("\n", history), ct);
+                lastAiResponse = response;
+                history.Add($"AI: {response}");
+
+                var critique = await kernel.CompleteAsync(RequirementsPrompts.CritiquePrompt, response, ct);
+
+                if (RequirementsPrompts.IsSatisfactory(critique))
+                {
+                    spec = new RequirementsSpec { Content = response, RunId = config.RunId, Stage = SdlcStage.Requirements };
+                    break;
+                }
+                history.Add($"Critique: {critique}");
             }
-            history.Add($"Critique: {critique}");
+
+            spec ??= new RequirementsSpec { Content = lastAiResponse, RunId = config.RunId, Stage = SdlcStage.Requirements };
+
+            await artifacts.SaveAsync(spec);
+            await context.EmitEventAsync(new KernelProcessEvent { Id = SdlcEvents.RequirementsComplete, Data = spec }, ct);
+            if (telemetry != null)
+                await telemetry.RecordStepCompletedAsync(SdlcStage.Requirements, nameof(RequirementsStep), ct);
         }
-
-        spec ??= new RequirementsSpec { Content = lastAiResponse, RunId = config.RunId, Stage = SdlcStage.Requirements };
-
-        await artifacts.SaveAsync(spec);
-        await context.EmitEventAsync(new KernelProcessEvent { Id = SdlcEvents.RequirementsComplete, Data = spec }, ct);
+        catch (Exception ex)
+        {
+            if (telemetry != null)
+                await telemetry.RecordStepFailedAsync(SdlcStage.Requirements, nameof(RequirementsStep), ex, ct);
+            throw;
+        }
+        finally
+        {
+            sw.Stop();
+            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds, new KeyValuePair<string, object?>[] { new("sdlc.stage", "Requirements") });
+        }
     }
 }

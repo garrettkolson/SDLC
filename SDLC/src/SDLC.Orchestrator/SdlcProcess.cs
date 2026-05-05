@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
 using SDLC.Notifications;
+using SDLC.Telemetry;
 
 namespace SDLC.Orchestrator;
 
@@ -40,13 +41,15 @@ public class PipelineRunnerService : IPipelineRunner
 {
     private readonly ISdlcProcessFactory _processFactory;
     private readonly ILogger<PipelineRunnerService> _logger;
+    private readonly IPipelineTelemetry? _telemetry;
     private readonly ConcurrentDictionary<Guid, object> _activeRuns = new();
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<GateResolution>> _pendingGates = new();
 
-    public PipelineRunnerService(ISdlcProcessFactory processFactory, ILogger<PipelineRunnerService> logger)
+    public PipelineRunnerService(ISdlcProcessFactory processFactory, ILogger<PipelineRunnerService> logger, IPipelineTelemetry? telemetry = null)
     {
         _processFactory = processFactory;
         _logger = logger;
+        _telemetry = telemetry;
     }
 
     public int ActiveRunCount => _activeRuns.Count;
@@ -67,11 +70,16 @@ public class PipelineRunnerService : IPipelineRunner
             throw new InvalidOperationException($"Run {config.RunId} is already active.");
 
         _logger.LogInformation("Starting SDLC run {RunId}", config.RunId);
+        if (_telemetry != null)
+            _telemetry.StartPipelineRunAsync(config.RunId, config.ProjectBrief, ct);
 
         var handle = _processFactory.StartAsync(config);
         _ = handle.Task.ContinueWith(t =>
         {
             _activeRuns.TryRemove(config.RunId, out _);
+            if (_telemetry != null)
+                _telemetry.CompletePipelineRunAsync(config.RunId, ct);
+            SdlcTelemetry.RunsCompleted.Add(1);
             if (t.IsFaulted)
                 _logger.LogError(t.Exception, "Run {RunId} failed", config.RunId);
             else
@@ -87,6 +95,14 @@ public class PipelineRunnerService : IPipelineRunner
             throw new InvalidOperationException($"No active run for {runId}");
 
         if (_pendingGates.TryRemove(gateId, out var tcs))
+        {
             tcs.TrySetResult(new GateResolution(gateId, decision, notes));
+            if (decision == GateDecision.Approved && _telemetry != null)
+                await _telemetry.RecordGateApprovedAsync(gateId, ct);
+            else if (decision == GateDecision.Rejected && _telemetry != null)
+                await _telemetry.RecordGateRejectedAsync(gateId, ct);
+            SdlcTelemetry.GatesApproved.Add(decision == GateDecision.Approved ? 1 : 0);
+            SdlcTelemetry.GatesRejected.Add(decision == GateDecision.Rejected ? 1 : 0);
+        }
     }
 }
