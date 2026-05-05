@@ -16,6 +16,8 @@ public class SlackNotificationServiceTests
     [NotNull]
     private HttpClient _httpClient = null!;
 
+    private readonly DashboardUrlBuilder _urlBuilder = new("http://localhost:1234");
+
     [SetUp]
     public void SetUp()
     {
@@ -33,7 +35,7 @@ public class SlackNotificationServiceTests
     [Test]
     public async Task SendApprovalRequestAsync_PostsToWebhook()
     {
-        var service = new SlackNotificationService(_httpClient!, "/services/test");
+        var service = new SlackNotificationService(_httpClient!, "/services/test", _urlBuilder);
         var gate = new StageGate
         {
             RunId = Guid.NewGuid(),
@@ -50,7 +52,7 @@ public class SlackNotificationServiceTests
     [Test]
     public async Task SendApprovalRequestAsync_PostsJsonContentType()
     {
-        var service = new SlackNotificationService(_httpClient, "/services/test");
+        var service = new SlackNotificationService(_httpClient, "/services/test", _urlBuilder);
         var gate = new StageGate { RunId = Guid.NewGuid(), Stage = SdlcStage.Design, Status = GateStatus.Pending };
 
         await service.SendApprovalRequestAsync(gate);
@@ -61,7 +63,7 @@ public class SlackNotificationServiceTests
     [Test]
     public async Task SendApprovalRequestAsync_IncludesGateIdInPayload()
     {
-        var service = new SlackNotificationService(_httpClient, "/services/test");
+        var service = new SlackNotificationService(_httpClient, "/services/test", _urlBuilder);
         var expectedGateId = Guid.NewGuid();
         var gate = new StageGate { GateId = expectedGateId, RunId = Guid.NewGuid(), Stage = SdlcStage.Research, Status = GateStatus.Pending };
 
@@ -74,33 +76,34 @@ public class SlackNotificationServiceTests
     [Test]
     public async Task SendApprovalRequestAsync_IncludesStageInPayload()
     {
-        var service = new SlackNotificationService(_httpClient, "/services/test");
+        var service = new SlackNotificationService(_httpClient, "/services/test", _urlBuilder);
         var stage = SdlcStage.Build;
         var gate = new StageGate { RunId = Guid.NewGuid(), Stage = stage, Status = GateStatus.Pending };
 
         await service.SendApprovalRequestAsync(gate);
 
         var payload = _httpHandler.ReceivedRequest()?.Content?.ReadAsStringAsync().Result;
-        payload.Should().Contain("\"stage\"");
+        payload.Should().Contain($"{stage}*");
     }
 
-    [Test]
-    public async Task SendApprovalRequestAsync_IncludesNotesInPayload()
-    {
-        var service = new SlackNotificationService(_httpClient, "/services/test");
-        var notes = "Needs more detail on error handling";
-        var gate = new StageGate { RunId = Guid.NewGuid(), Stage = SdlcStage.Requirements, Status = GateStatus.Pending, Notes = notes };
-
-        await service.SendApprovalRequestAsync(gate);
-
-        var payload = _httpHandler.ReceivedRequest()?.Content?.ReadAsStringAsync().Result;
-        payload.Should().Contain(notes);
-    }
+    // We removed notes from the payloads for now
+    // [Test]
+    // public async Task SendApprovalRequestAsync_IncludesNotesInPayload()
+    // {
+    //     var service = new SlackNotificationService(_httpClient, "/services/test", _urlBuilder);
+    //     var notes = "Needs more detail on error handling";
+    //     var gate = new StageGate { RunId = Guid.NewGuid(), Stage = SdlcStage.Requirements, Status = GateStatus.Pending, Notes = notes };
+    //
+    //     await service.SendApprovalRequestAsync(gate);
+    //
+    //     var payload = _httpHandler.ReceivedRequest()?.Content?.ReadAsStringAsync().Result;
+    //     payload.Should().Contain(notes);
+    // }
 
     [Test]
     public async Task SendApprovalRequestAsync_ReturnsSuccessfully_WhenServerReturns200()
     {
-        var service = new SlackNotificationService(_httpClient, "/services/test");
+        var service = new SlackNotificationService(_httpClient, "/services/test", _urlBuilder);
         var gate = new StageGate { RunId = Guid.NewGuid(), Stage = SdlcStage.Research, Status = GateStatus.Pending };
 
         var act = () => service.SendApprovalRequestAsync(gate);
