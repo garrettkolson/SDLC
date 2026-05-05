@@ -58,14 +58,15 @@ public class ArtifactStore : IArtifactStore
         using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
         var row = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
-            SELECT artifact_id, file_path, stage, status, created_at
+            SELECT artifact_id, run_id, file_path, stage, status, created_at
             FROM artifacts WHERE artifact_id = :Id",
             new { Id = artifactId.ToString() });
 
         if (row == null) return null;
 
         var content = await File.ReadAllTextAsync(row.file_path);
-        return (T)CreateArtifact(typeof(T), artifactId, content, row.stage, row.status, row.created_at);
+        var runId = Guid.Parse(row.run_id);
+        return (T)CreateArtifact(typeof(T), artifactId, content, runId, row.stage, row.status, row.created_at);
     }
 
     public async Task<T?> GetLatestForRunAsync<T>(Guid runId) where T : SdlcArtifact
@@ -74,7 +75,7 @@ public class ArtifactStore : IArtifactStore
         await conn.OpenAsync();
         var stageStr = GetStageName(typeof(T));
         var row = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
-            SELECT artifact_id, file_path, stage, status, created_at
+            SELECT artifact_id, run_id, file_path, stage, status, created_at
             FROM artifacts
             WHERE run_id = :RunId AND stage = :Stage
             ORDER BY created_at DESC LIMIT 1",
@@ -83,7 +84,8 @@ public class ArtifactStore : IArtifactStore
         if (row == null) return null;
 
         var content = await File.ReadAllTextAsync(row.file_path);
-        return (T)CreateArtifact(typeof(T), Guid.Parse(row.artifact_id), content, row.stage, row.status, row.created_at);
+        var runIdFromDb = Guid.Parse(row.run_id);
+        return (T)CreateArtifact(typeof(T), Guid.Parse(row.artifact_id), content, runIdFromDb, row.stage, row.status, row.created_at);
     }
 
     public async Task UpdateStatusAsync(Guid artifactId, ArtifactStatus status)
@@ -166,15 +168,19 @@ public class ArtifactStore : IArtifactStore
         _ => throw new NotSupportedException($"Unknown artifact type: {type.Name}")
     };
 
-    private SdlcArtifact CreateArtifact(Type type, Guid artifactId, string content, string stage, string status, string createdAt)
+    private SdlcArtifact CreateArtifact(Type type, Guid artifactId, string content, Guid runId, string stage, string status, string createdAt)
     {
+        var stageEnum = (SdlcStage)Enum.Parse(typeof(SdlcStage), stage);
+        var statusEnum = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status);
+        var createdAtOffset = DateTimeOffset.Parse(createdAt);
+
         SdlcArtifact artifact = type.Name switch
         {
-            "ResearchBrief" => new ResearchBrief { ArtifactId = artifactId, Content = content, Stage = SdlcStage.Research, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
-            "RequirementsSpec" => new RequirementsSpec { ArtifactId = artifactId, Content = content, Stage = SdlcStage.Requirements, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
-            "ArchitectureRecord" => new ArchitectureRecord { ArtifactId = artifactId, Content = content, Stage = SdlcStage.Design, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
-            "BuildResult" => new BuildResult { ArtifactId = artifactId, Stage = SdlcStage.Build, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
-            "LearnReport" => new LearnReport { ArtifactId = artifactId, Stage = SdlcStage.Learn, Status = (ArtifactStatus)Enum.Parse(typeof(ArtifactStatus), status), CreatedAt = DateTimeOffset.Parse(createdAt) },
+            "ResearchBrief" => new ResearchBrief { ArtifactId = artifactId, Content = content, RunId = runId, Stage = SdlcStage.Research, Status = statusEnum, CreatedAt = createdAtOffset },
+            "RequirementsSpec" => new RequirementsSpec { ArtifactId = artifactId, Content = content, RunId = runId, Stage = SdlcStage.Requirements, Status = statusEnum, CreatedAt = createdAtOffset },
+            "ArchitectureRecord" => new ArchitectureRecord { ArtifactId = artifactId, Content = content, RunId = runId, Stage = SdlcStage.Design, Status = statusEnum, CreatedAt = createdAtOffset },
+            "BuildResult" => new BuildResult { ArtifactId = artifactId, Stage = SdlcStage.Build, Status = statusEnum, CreatedAt = createdAtOffset, RunId = runId },
+            "LearnReport" => new LearnReport { ArtifactId = artifactId, Stage = SdlcStage.Learn, Status = statusEnum, CreatedAt = createdAtOffset, RunId = runId },
             _ => throw new NotSupportedException($"Unknown artifact type: {type.Name}")
         };
         return artifact;
