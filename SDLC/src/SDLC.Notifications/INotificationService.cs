@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using SDLC.Infrastructure;
 
 namespace SDLC.Notifications;
@@ -9,16 +10,27 @@ public interface INotificationService
 
 public class SlackNotificationService : INotificationService
 {
-    private readonly string _webhookUrl;
+    private readonly HttpClient _httpClient;
+    private readonly string _webhookPath;
 
-    public SlackNotificationService(string webhookUrl)
+    public SlackNotificationService(HttpClient httpClient, string webhookPath)
     {
-        _webhookUrl = webhookUrl;
+        _httpClient = httpClient;
+        _webhookPath = webhookPath;
     }
 
-    public Task SendApprovalRequestAsync(StageGate gate)
+    public async Task SendApprovalRequestAsync(StageGate gate)
     {
-        // TODO: POST to Slack webhook with gate details
-        return Task.CompletedTask;
+        var payload = new
+        {
+            gate.GateId,
+            gate.RunId,
+            gate.Stage,
+            gate.Status,
+            gate.Notes,
+            channel = "#sdlc-gates"
+        };
+
+        await _httpClient.PostAsJsonAsync(_webhookPath, payload);
     }
 }
