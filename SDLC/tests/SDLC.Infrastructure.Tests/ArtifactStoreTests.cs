@@ -64,7 +64,7 @@ public class ArtifactStoreTests
 
         await _store.SaveAsync(brief);
 
-        var expectedPath = Path.Combine(_fsPath, runId.ToString(), "Research.md");
+        var expectedPath = Path.Combine(_fsPath, runId.ToString(), $"Research-{brief.ArtifactId:N}.md");
         File.Exists(expectedPath).Should().BeTrue();
         (await File.ReadAllTextAsync(expectedPath)).Should().Be(brief.Content);
     }
