@@ -4,6 +4,12 @@
     <ProjectReference Include="..\SDLC.Contracts\SDLC.Contracts.csproj" />
     <ProjectReference Include="..\SDLC.Infrastructure\SDLC.Infrastructure.csproj" />
     <ProjectReference Include="..\SDLC.Orchestrator\SDLC.Orchestrator.csproj" />
+    <ProjectReference Include="..\SDLC.Telemetry\SDLC.Telemetry.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry" Version="1.15.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.0" />
   </ItemGroup>
 
   <PropertyGroup>

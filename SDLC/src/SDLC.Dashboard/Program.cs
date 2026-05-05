@@ -6,6 +6,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+builder.Services.AddControllers();
+
 var dbConn = builder.Configuration.GetConnectionString("SDLCDb") ?? "Data Source=sdlc.db";
 var artifactDir = Path.Combine(AppContext.BaseDirectory, "artifacts");
 builder.Services.AddSingleton<SDLC.Infrastructure.IArtifactStore>(
@@ -22,8 +24,17 @@ builder.Services.AddSingleton<SDLC.Notifications.INotificationService>(sp =>
         "/webhook/sdlc",
         sp.GetRequiredService<SDLC.Notifications.DashboardUrlBuilder>()));
 
+// Telemetry
+builder.Services.AddSingleton<SDLC.Telemetry.PipelineTelemetry>();
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddMeter("SDLC"));
+
 // Simple run service — renders data, resolves gates via StageGateStore
-builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService, SDLC.Dashboard.Services.SdlcRunService>();
+builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService>(sp =>
+    new SDLC.Dashboard.Services.SdlcRunService(
+        sp.GetRequiredService<SDLC.Infrastructure.IArtifactStore>(),
+        sp.GetRequiredService<SDLC.Infrastructure.IStageGateStore>(),
+        telemetry: sp.GetRequiredService<SDLC.Telemetry.PipelineTelemetry>()));
 
 var app = builder.Build();
 
@@ -40,6 +51,7 @@ app.UseHttpsRedirection();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+app.MapControllers();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

@@ -1,6 +1,7 @@
 using SDLC.Contracts;
 using SDLC.Infrastructure;
 using SDLC.Orchestrator;
+using SDLC.Telemetry;
 
 namespace SDLC.Dashboard.Services;
 
@@ -43,15 +44,18 @@ public class SdlcRunService : ISdlcRunService
     private readonly IArtifactStore _artifactStore;
     private readonly IStageGateStore _gateStore;
     private readonly IPipelineRunner? _runner;
+    private readonly IPipelineTelemetry? _telemetry;
 
     public SdlcRunService(
         IArtifactStore artifactStore,
         IStageGateStore gateStore,
-        IPipelineRunner? runner = null)
+        IPipelineRunner? runner = null,
+        IPipelineTelemetry? telemetry = null)
     {
         _artifactStore = artifactStore;
         _gateStore = gateStore;
         _runner = runner;
+        _telemetry = telemetry;
     }
 
     public async Task<IReadOnlyList<RunSummary>> GetActiveRunsAsync(CancellationToken ct = default)
@@ -118,6 +122,8 @@ public class SdlcRunService : ISdlcRunService
         if (gate is null)
             throw new KeyNotFoundException($"Gate {gateId} not found");
         await _gateStore.ResolveAsync(gateId, GateDecision.Approved, notes);
+        if (_telemetry != null)
+            await _telemetry.RecordGateApprovedAsync(gateId, ct);
         if (_runner != null)
             Task.Run(() => _runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Approved, notes, ct));
     }
@@ -125,5 +131,7 @@ public class SdlcRunService : ISdlcRunService
     public async Task RejectGateAsync(Guid gateId, string notes, CancellationToken ct = default)
     {
         await _gateStore.ResolveAsync(gateId, GateDecision.Rejected, notes);
+        if (_telemetry != null)
+            await _telemetry.RecordGateRejectedAsync(gateId, ct);
     }
 }
