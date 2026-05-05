@@ -49,7 +49,19 @@ public class BuildStep
             }
         }
 
-        await artifacts.SaveAsync(result!);
+        if (result is null)
+        {
+            result = new BuildResult
+            {
+                RunId = spec.RunId,
+                Stage = SdlcStage.Build,
+                SweAfRunId = sweAfRunId,
+                Success = false,
+                Logs = "Build timed out or was cancelled before a terminal status was received."
+            };
+        }
+
+        await artifacts.SaveAsync(result);
         await context.EmitEventAsync(new KernelProcessEvent
         {
             Id = SdlcEvents.BuildComplete,

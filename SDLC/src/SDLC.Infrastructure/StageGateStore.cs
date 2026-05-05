@@ -2,7 +2,7 @@ using SDLC.Contracts;
 
 namespace SDLC.Infrastructure;
 
-public class StageGateStore
+public class StageGateStore : IStageGateStore
 {
     private readonly string _connectionString;
 
