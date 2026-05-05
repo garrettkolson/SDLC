@@ -42,12 +42,12 @@ public class SdlcRunService : ISdlcRunService
 {
     private readonly IArtifactStore _artifactStore;
     private readonly IStageGateStore _gateStore;
-    private readonly IPipelineRunner _runner;
+    private readonly IPipelineRunner? _runner;
 
     public SdlcRunService(
         IArtifactStore artifactStore,
         IStageGateStore gateStore,
-        IPipelineRunner runner)
+        IPipelineRunner? runner = null)
     {
         _artifactStore = artifactStore;
         _gateStore = gateStore;
@@ -71,7 +71,8 @@ public class SdlcRunService : ISdlcRunService
             var lastStage = artifacts.MaxBy(a => a.CreatedAt)?.Stage ?? SdlcStage.Research;
             var pendingGates = gates.Select(g => new GateSummary(g.GateId, g.Stage, g.Status, g.Notes)).ToList();
 
-            results.Add(new RunSummary(runId, _runner.IsRunActive(runId), lastStage, pendingGates.AsReadOnly()));
+            var isActive = _runner?.IsRunActive(runId) ?? false;
+            results.Add(new RunSummary(runId, isActive, lastStage, pendingGates.AsReadOnly()));
         }
 
         return results.AsReadOnly();
@@ -105,7 +106,7 @@ public class SdlcRunService : ISdlcRunService
 
         return new RunDetail(
             runId,
-            _runner.IsRunActive(runId),
+            _runner?.IsRunActive(runId) ?? false,
             lastStage,
             artifactSummaries.AsReadOnly(),
             allGates.AsReadOnly());
@@ -117,7 +118,8 @@ public class SdlcRunService : ISdlcRunService
         if (gate is null)
             throw new KeyNotFoundException($"Gate {gateId} not found");
         await _gateStore.ResolveAsync(gateId, GateDecision.Approved, notes);
-        await _runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Approved, notes, ct);
+        if (_runner != null)
+            Task.Run(() => _runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Approved, notes, ct));
     }
 
     public async Task RejectGateAsync(Guid gateId, string notes, CancellationToken ct = default)

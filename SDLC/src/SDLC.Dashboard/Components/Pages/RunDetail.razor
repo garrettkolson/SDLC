@@ -1,0 +1,114 @@
+@page "/run/{runId:guid}"
+@inject SDLC.Dashboard.Services.ISdlcRunService RunService
+
+<PageTitle>Run Detail — @detail?.RunId</PageTitle>
+
+@if (detail == null)
+{
+    <p>Run not found.</p>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Run: <code>@detail.RunId</code></h2>
+        <span class="badge @(detail.IsActive ? "bg-success" : "bg-secondary") me-2">@(detail.IsActive ? "Active" : "Completed")</span>
+    </div>
+
+    <h4>Artifacts</h4>
+    <div class="list-group mb-4">
+        @foreach (var a in detail.Artifacts)
+        {
+            <div class="list-group-item">
+                <div class="d-flex w-100 justify-content-between">
+                    <div>
+                        <h6 class="mb-1">@a.TypeName</h6>
+                        <p class="mb-0">Stage: <strong>@a.Stage</strong> | Status: <strong>@a.Status</strong></p>
+                    </div>
+                    <small class="text-body-secondary">@a.CreatedAt.ToString("yyyy-MM-dd HH:mm")</small>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (detail.AllGates.Any())
+    {
+        <h4>Stage Gates</h4>
+        <div class="list-group mb-4">
+            @foreach (var gate in detail.AllGates)
+            {
+                <div class="list-group-item">
+                    <div class="d-flex w-100 justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">Gate — @gate.Stage</h6>
+                            <p class="mb-0">
+                                <span class="badge @(gate.Status == Contracts.GateStatus.Approved ? "bg-success" : gate.Status == Contracts.GateStatus.Pending ? "bg-warning text-dark" : "bg-danger")">
+                                    @gate.Status
+                                </span>
+                                @if (!string.IsNullOrEmpty(gate.Notes))
+                                {
+                                    <span class="text-body-secondary ms-2">@gate.Notes</span>
+                                }
+                            </p>
+                        </div>
+                        @if (gate.Status == Contracts.GateStatus.Pending)
+                        {
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-success" onclick="@(() => ApproveAsync(gate.GateId))">Approve</button>
+                                <button class="btn btn-danger" onclick="@(() => RejectAsync(gate.GateId))">Reject</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+@if (message != null)
+{
+    <div class="alert alert-@messageType">@message</div>
+}
+
+@code {
+    [Parameter] public Guid runId { get; set; }
+    private SDLC.Dashboard.Services.RunDetail? detail;
+    private string? message;
+    private string messageType = "info";
+
+    protected override async Task OnInitializedAsync()
+    {
+        detail = await RunService.GetRunDetailAsync(runId);
+    }
+
+    private async Task ApproveAsync(Guid gateId)
+    {
+        try
+        {
+            await RunService.ApproveGateAsync(gateId, "Approved from dashboard");
+            message = "Gate approved";
+            messageType = "success";
+            detail = await RunService.GetRunDetailAsync(runId);
+        }
+        catch (Exception ex)
+        {
+            message = $"Error: {ex.Message}";
+            messageType = "danger";
+        }
+    }
+
+    private async Task RejectAsync(Guid gateId)
+    {
+        try
+        {
+            await RunService.RejectGateAsync(gateId, "Rejected from dashboard");
+            message = "Gate rejected";
+            messageType = "info";
+            detail = await RunService.GetRunDetailAsync(runId);
+        }
+        catch (Exception ex)
+        {
+            message = $"Error: {ex.Message}";
+            messageType = "danger";
+        }
+    }
+}
