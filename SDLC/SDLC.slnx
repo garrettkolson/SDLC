@@ -6,6 +6,7 @@
     <Project Path="src/SDLC.Infrastructure/SDLC.Infrastructure.csproj" />
     <Project Path="src/SDLC.Notifications/SDLC.Notifications.csproj" />
     <Project Path="src/SDLC.Orchestrator/SDLC.Orchestrator.csproj" />
+    <Project Path="src\SDLC.Telemetry\SDLC.Telemetry.csproj" Type="Classic C#" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SDLC.Agents.Tests/SDLC.Agents.Tests.csproj" />
@@ -15,5 +16,6 @@
     <Project Path="tests/SDLC.Integration.Tests/SDLC.Integration.Tests.csproj" />
     <Project Path="tests/SDLC.Notifications.Tests/SDLC.Notifications.Tests.csproj" />
     <Project Path="tests/SDLC.Orchestrator.Tests/SDLC.Orchestrator.Tests.csproj" />
+    <Project Path="tests\SDLC.Telemetry.Tests\SDLC.Telemetry.Tests.csproj" Type="Classic C#" />
   </Folder>
 </Solution>
