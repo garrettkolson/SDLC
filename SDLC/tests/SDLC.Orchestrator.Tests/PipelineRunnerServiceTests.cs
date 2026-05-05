@@ -15,6 +15,8 @@ public class PipelineRunnerServiceTests
     public async Task EnqueueAsync_AddsRunToActiveRuns()
     {
         var processFactory = Substitute.For<ISdlcProcessFactory>();
+        processFactory.StartAsync(Arg.Any<SdlcRunConfig>())
+            .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var runner = new PipelineRunnerService(processFactory, logger);
         var config = new SdlcRunConfig { ProjectBrief = "Test project" };
@@ -28,6 +30,8 @@ public class PipelineRunnerServiceTests
     public async Task EnqueueAsync_MultipleRuns_AllTracked()
     {
         var processFactory = Substitute.For<ISdlcProcessFactory>();
+        processFactory.StartAsync(Arg.Any<SdlcRunConfig>())
+            .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var runner = new PipelineRunnerService(processFactory, logger);
 
@@ -42,6 +46,8 @@ public class PipelineRunnerServiceTests
     public async Task IsRunActive_ForEnqueuedRun_ReturnsTrue()
     {
         var processFactory = Substitute.For<ISdlcProcessFactory>();
+        processFactory.StartAsync(Arg.Any<SdlcRunConfig>())
+            .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var runner = new PipelineRunnerService(processFactory, logger);
         var config = new SdlcRunConfig { ProjectBrief = "Test" };
@@ -77,6 +83,8 @@ public class PipelineRunnerServiceTests
     public async Task EnqueueAsync_SameRunIdTwice_ThrowsInvalidOperationException()
     {
         var processFactory = Substitute.For<ISdlcProcessFactory>();
+        processFactory.StartAsync(Arg.Any<SdlcRunConfig>())
+            .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var runner = new PipelineRunnerService(processFactory, logger);
         var runId = Guid.NewGuid();

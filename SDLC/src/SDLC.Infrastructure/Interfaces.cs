@@ -10,6 +10,7 @@ public interface IArtifactStore
     Task UpdateStatusAsync(Guid artifactId, ArtifactStatus status);
     Task UpdateContentAsync(Guid artifactId, string content);
     Task<List<SdlcArtifact>> GetAllForRunAsync(Guid runId);
+    Task<List<Guid>> GetAllRunIdsAsync();
 }
 
 public interface IStageGateStore

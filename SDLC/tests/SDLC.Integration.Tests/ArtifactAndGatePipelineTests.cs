@@ -136,7 +136,7 @@ public class ArtifactAndGatePipelineTests
 
         var updated = await _artifactStore.GetAsync<ResearchBrief>(artifactId);
         updated!.Content.Should().Be("updated content");
-        updated.Status.Should().Be(ArtifactStatus.Draft);
+        updated.Status.Should().Be(ArtifactStatus.PendingReview);
     }
 
     [Test]

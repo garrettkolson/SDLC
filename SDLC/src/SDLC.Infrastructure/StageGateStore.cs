@@ -73,12 +73,16 @@ public class StageGateStore : IStageGateStore
 
     public async Task ResolveAsync(Guid gateId, GateDecision decision, string? notes)
     {
+        var status = decision == GateDecision.Approved
+            ? GateStatus.Approved.ToString()
+            : GateStatus.Rejected.ToString();
+
         await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         await conn.OpenAsync();
         await using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(@"
             UPDATE gates SET status = @status, notes = @notes, resolved_at = @resolved_at
             WHERE gate_id = @id", conn);
-        cmd.Parameters.AddWithValue("@status", decision.ToString());
+        cmd.Parameters.AddWithValue("@status", status);
         cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@resolved_at", DateTimeOffset.UtcNow.ToString("o"));
         cmd.Parameters.AddWithValue("@id", gateId.ToString());

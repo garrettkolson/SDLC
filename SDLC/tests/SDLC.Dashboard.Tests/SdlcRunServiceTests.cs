@@ -222,6 +222,9 @@ public class SdlcRunServiceTests
         public Task UpdateContentAsync(Guid artifactId, string content) => throw new NotImplementedException();
         public Task<List<SdlcArtifact>> GetAllForRunAsync(Guid runId) =>
             Task.FromResult(_byRun.TryGetValue(runId, out var list) ? list : new List<SdlcArtifact>());
+
+        public Task<List<Guid>> GetAllRunIdsAsync() =>
+            Task.FromResult(_byRun.Keys.ToList());
     }
 
     private class TestGateStore : IStageGateStore

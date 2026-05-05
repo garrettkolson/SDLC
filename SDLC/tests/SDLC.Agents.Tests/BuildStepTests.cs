@@ -129,6 +129,7 @@ public class BuildStepTests
         public Task UpdateStatusAsync(Guid artifactId, ArtifactStatus status) => throw new NotImplementedException();
         public Task UpdateContentAsync(Guid artifactId, string content) => throw new NotImplementedException();
         public Task<List<SdlcArtifact>> GetAllForRunAsync(Guid runId) => throw new NotImplementedException();
+        public Task<List<Guid>> GetAllRunIdsAsync() => Task.FromResult(new List<Guid>());
     }
 
     private class TestSweAfClient : ISweAfClient

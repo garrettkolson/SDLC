@@ -42,12 +42,12 @@ public class SdlcRunService : ISdlcRunService
 {
     private readonly IArtifactStore _artifactStore;
     private readonly IStageGateStore _gateStore;
-    private readonly PipelineRunnerService _runner;
+    private readonly IPipelineRunner _runner;
 
     public SdlcRunService(
         IArtifactStore artifactStore,
         IStageGateStore gateStore,
-        PipelineRunnerService runner)
+        IPipelineRunner runner)
     {
         _artifactStore = artifactStore;
         _gateStore = gateStore;
@@ -57,9 +57,7 @@ public class SdlcRunService : ISdlcRunService
     public async Task<IReadOnlyList<RunSummary>> GetActiveRunsAsync(CancellationToken ct = default)
     {
         // Get all run IDs from artifacts
-        var allArtifacts = new List<SdlcArtifact>();
-        // In production this would query distinct run IDs; for now we query common ones
-        var runIds = new[] { Guid.Empty };
+        var runIds = await _artifactStore.GetAllRunIdsAsync();
         var results = new List<RunSummary>();
 
         foreach (var runId in runIds)

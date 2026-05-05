@@ -109,8 +109,9 @@ public class ArtifactStore : IArtifactStore
         if (row != null)
             await File.WriteAllTextAsync(row, content);
 
+        // Content edited → needs re-approval; reset to PendingReview (not Draft)
         await conn.ExecuteAsync(@"
-            UPDATE artifacts SET status = 'Draft' WHERE artifact_id = :Id",
+            UPDATE artifacts SET status = 'PendingReview' WHERE artifact_id = :Id",
             new { Id = artifactId.ToString() });
     }
 
@@ -155,8 +156,17 @@ public class ArtifactStore : IArtifactStore
         return result;
     }
 
+    public async Task<List<Guid>> GetAllRunIdsAsync()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+        var rows = await conn.QueryAsync<string>(
+            "SELECT DISTINCT run_id FROM artifacts ORDER BY created_at DESC");
+        return rows.Select(Guid.Parse).ToList();
+    }
+
     private string ArtifactPath(SdlcArtifact a) =>
-        Path.Combine(_basePath, a.RunId.ToString(), $"{a.Stage}.md");
+        Path.Combine(_basePath, a.RunId.ToString(), $"{a.Stage}-{a.ArtifactId:N}.md");
 
     private string GetStageName(Type type) => type.Name switch
     {

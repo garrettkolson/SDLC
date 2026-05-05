@@ -32,3 +32,12 @@ public class ProcessHandle
 
     public Task Task => _runTask;
 }
+
+public record GateResolution(Guid GateId, GateDecision Decision, string? Notes);
+
+public interface IPipelineRunner
+{
+    bool IsRunActive(Guid runId);
+    Task EnqueueAsync(SdlcRunConfig config, CancellationToken ct = default);
+    Task ResumeGateAsync(Guid runId, Guid gateId, GateDecision decision, string? notes, CancellationToken ct = default);
+}

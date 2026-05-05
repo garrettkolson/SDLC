@@ -66,17 +66,23 @@ public class StageGateStepTests
     }
 
     [Test]
-    public async Task RequestApprovalAsync_WhenNotificationFails_ThrowsAndGateStillCreated()
+    public async Task RequestApprovalAsync_WhenNotificationFails_GateStillCreatedAndEventEmitted()
     {
         var artifact = new ResearchBrief { RunId = Guid.NewGuid(), Stage = SdlcStage.Research };
         var gate = new StageGate { GateId = Guid.NewGuid(), Status = GateStatus.Pending, Artifact = artifact };
         _gateStore.CreateGateAsync(artifact).Returns(gate);
         _notifications.SendApprovalRequestAsync(Arg.Any<StageGate>())
-                      .Returns(Task.FromException<HttpRequestException>(new HttpRequestException("Slack unavailable")));
+                      .Returns(Task.FromException<Exception>(new Exception("Slack unavailable")));
 
-        var act = () => _step.RequestApprovalAsync(_context, artifact, _notifications, _gateStore);
+        KernelProcessEvent? captured = null;
+        _context.EmitEventAsync(Arg.Do<KernelProcessEvent>(e => captured = e));
 
-        await act.Should().ThrowAsync<HttpRequestException>();
+        ILogger<StageGateStep> _logger = Substitute.For<ILogger<StageGateStep>>();
+
+        var act = async () => await _step.RequestApprovalAsync(_context, artifact, _notifications, _gateStore, _logger);
+
+        await act.Should().NotThrowAsync();
         await _gateStore.Received(1).CreateGateAsync(artifact);
+        captured!.Id.Should().Be(SdlcEvents.GatePending);
     }
 }
