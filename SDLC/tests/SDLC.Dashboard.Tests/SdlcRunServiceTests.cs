@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
 using FluentAssertions;
+using NSubstitute;
 using NUnit.Framework;
 using SDLC.Contracts;
 using SDLC.Dashboard.Services;
 using SDLC.Infrastructure;
 using SDLC.Orchestrator;
+using SDLC.Telemetry;
 
 namespace SDLC.Dashboard.Tests;
 
@@ -14,6 +16,7 @@ public class SdlcRunServiceTests
     private TestArtifactStore _artifactStore = null!;
     private TestGateStore _gateStore = null!;
     private TestRunner _runner = null!;
+    private IPipelineTelemetry telemetry = null!;
     private Guid _testRunId;
 
     [SetUp]
@@ -23,19 +26,20 @@ public class SdlcRunServiceTests
         _artifactStore = new TestArtifactStore();
         _gateStore = new TestGateStore();
         _runner = new TestRunner();
+        telemetry = Substitute.For<IPipelineTelemetry>();
     }
 
     [Test]
     public void Constructor_AssemblesDependencies()
     {
-        var service = new SdlcRunService(_artifactStore, _gateStore, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
         service.Should().NotBeNull();
     }
 
     [Test]
     public async Task GetRunDetailAsync_ReturnsNull_WhenNoArtifacts()
     {
-        var service = new SdlcRunService(_artifactStore, _gateStore, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
         var result = await service.GetRunDetailAsync(_testRunId);
         result.Should().BeNull();
     }
@@ -54,7 +58,7 @@ public class SdlcRunServiceTests
         };
         _artifactStore.Add(brief);
 
-        var service = new SdlcRunService(_artifactStore, _gateStore, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
         var result = await service.GetRunDetailAsync(_testRunId);
 
         result.Should().NotBeNull();
@@ -78,7 +82,7 @@ public class SdlcRunServiceTests
         };
         _artifactStore.Add(arch);
 
-        var service = new SdlcRunService(_artifactStore, _gateStore, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
         var result = await service.GetRunDetailAsync(_testRunId);
 
         result!.Artifacts.Should().ContainSingle();
@@ -101,7 +105,7 @@ public class SdlcRunServiceTests
         _artifactStore.Add(brief);
         _runner.SetActive(_testRunId, true);
 
-        var service = new SdlcRunService(_artifactStore, _gateStore, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
         var result = await service.GetRunDetailAsync(_testRunId);
 
         result!.IsActive.Should().BeTrue();
@@ -131,7 +135,7 @@ public class SdlcRunServiceTests
         _artifactStore.Add(brief);
         _artifactStore.Add(arch);
 
-        var service = new SdlcRunService(_artifactStore, _gateStore, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
         var result = await service.GetRunDetailAsync(_testRunId);
 
         result!.LastStage.Should().Be(SdlcStage.Design);
@@ -151,7 +155,7 @@ public class SdlcRunServiceTests
         };
         _gateStore.Gates[gateId] = gate;
 
-        var service = new SdlcRunService(_artifactStore, _gateStore, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
         await service.ApproveGateAsync(gateId);
 
         gate.Status.Should().Be(GateStatus.Approved);
@@ -164,7 +168,7 @@ public class SdlcRunServiceTests
     {
         var gateId = Guid.NewGuid();
 
-        var service = new SdlcRunService(_artifactStore, _gateStore, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
 
         var act = async () => await service.ApproveGateAsync(gateId);
         await act.Should().ThrowAsync<KeyNotFoundException>();
@@ -184,7 +188,7 @@ public class SdlcRunServiceTests
         };
         _gateStore.Gates[gateId] = gate;
 
-        var service = new SdlcRunService(_artifactStore, _gateStore, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
         await service.RejectGateAsync(gateId, notes);
 
         gate.Status.Should().Be(GateStatus.Rejected);
@@ -255,12 +259,10 @@ public class SdlcRunServiceTests
             Task.FromResult(Gates.Values.Where(g => g.RunId == runId && g.Status == GateStatus.Pending).ToList());
     }
 
-    private class TestRunner : PipelineRunnerService
+    private class TestRunner() : PipelineRunnerService(null!, null!, null!)
     {
         private readonly Dictionary<Guid, bool> _activeRuns = new();
         public Guid ResumedGate { get; private set; }
-
-        public TestRunner() : base(null!, null!) { }
 
         public void SetActive(Guid runId, bool active)
         {

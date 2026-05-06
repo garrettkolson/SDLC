@@ -5,6 +5,7 @@ using NUnit.Framework;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
 using SDLC.Notifications;
+using SDLC.Telemetry;
 
 namespace SDLC.Orchestrator.Tests;
 
@@ -18,7 +19,9 @@ public class PipelineRunnerServiceTests
         processFactory.StartAsync(Arg.Any<SdlcRunConfig>())
             .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
-        var runner = new PipelineRunnerService(processFactory, logger);
+        var telemetry = Substitute.For<IPipelineTelemetry>();
+        
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry);
         var config = new SdlcRunConfig { ProjectBrief = "Test project" };
 
         await runner.EnqueueAsync(config);
@@ -33,8 +36,9 @@ public class PipelineRunnerServiceTests
         processFactory.StartAsync(Arg.Any<SdlcRunConfig>())
             .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
-        var runner = new PipelineRunnerService(processFactory, logger);
-
+        var telemetry = Substitute.For<IPipelineTelemetry>();
+        
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry);
         await runner.EnqueueAsync(new SdlcRunConfig { ProjectBrief = "Project A" });
         await runner.EnqueueAsync(new SdlcRunConfig { ProjectBrief = "Project B" });
         await runner.EnqueueAsync(new SdlcRunConfig { ProjectBrief = "Project C" });
@@ -49,7 +53,9 @@ public class PipelineRunnerServiceTests
         processFactory.StartAsync(Arg.Any<SdlcRunConfig>())
             .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
-        var runner = new PipelineRunnerService(processFactory, logger);
+        var telemetry = Substitute.For<IPipelineTelemetry>();
+        
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry);        
         var config = new SdlcRunConfig { ProjectBrief = "Test" };
 
         await runner.EnqueueAsync(config);
@@ -62,8 +68,9 @@ public class PipelineRunnerServiceTests
     {
         var processFactory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
-        var runner = new PipelineRunnerService(processFactory, logger);
-
+        var telemetry = Substitute.For<IPipelineTelemetry>();
+        
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry);
         runner.IsRunActive(Guid.NewGuid()).Should().BeFalse();
     }
 
@@ -72,8 +79,9 @@ public class PipelineRunnerServiceTests
     {
         var processFactory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
-        var runner = new PipelineRunnerService(processFactory, logger);
-
+        var telemetry = Substitute.For<IPipelineTelemetry>();
+        
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry);
         var act = () => runner.ResumeGateAsync(Guid.NewGuid(), Guid.NewGuid(), GateDecision.Approved, null);
 
         await act.Should().ThrowAsync<InvalidOperationException>();
@@ -86,7 +94,9 @@ public class PipelineRunnerServiceTests
         processFactory.StartAsync(Arg.Any<SdlcRunConfig>())
             .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
-        var runner = new PipelineRunnerService(processFactory, logger);
+        var telemetry = Substitute.For<IPipelineTelemetry>();
+        
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry);
         var runId = Guid.NewGuid();
         var config1 = new SdlcRunConfig { RunId = runId, ProjectBrief = "Test" };
         await runner.EnqueueAsync(config1);

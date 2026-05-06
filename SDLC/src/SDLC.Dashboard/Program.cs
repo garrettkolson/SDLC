@@ -1,4 +1,5 @@
 using SDLC.Dashboard.Components;
+using SDLC.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +26,7 @@ builder.Services.AddSingleton<SDLC.Notifications.INotificationService>(sp =>
         sp.GetRequiredService<SDLC.Notifications.DashboardUrlBuilder>()));
 
 // Telemetry
-builder.Services.AddSingleton<SDLC.Telemetry.PipelineTelemetry>();
+builder.Services.AddSingleton<IPipelineTelemetry, PipelineTelemetry>();
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter("SDLC"));
 
@@ -34,7 +35,7 @@ builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService>(sp =>
     new SDLC.Dashboard.Services.SdlcRunService(
         sp.GetRequiredService<SDLC.Infrastructure.IArtifactStore>(),
         sp.GetRequiredService<SDLC.Infrastructure.IStageGateStore>(),
-        telemetry: sp.GetRequiredService<SDLC.Telemetry.PipelineTelemetry>()));
+        sp.GetRequiredService<IPipelineTelemetry>()));
 
 var app = builder.Build();
 

@@ -14,7 +14,7 @@ public class RequirementsStep
         ResearchBrief research,
         IKernelFactory kernelFactory,
         IArtifactStore artifacts,
-        IPipelineTelemetry? telemetry = null,
+        IPipelineTelemetry telemetry,
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -46,19 +46,18 @@ public class RequirementsStep
 
             await artifacts.SaveAsync(spec);
             await context.EmitEventAsync(new KernelProcessEvent { Id = SdlcEvents.RequirementsComplete, Data = spec }, ct);
-            if (telemetry != null)
-                await telemetry.RecordStepCompletedAsync(SdlcStage.Requirements, nameof(RequirementsStep), ct);
+            await telemetry.RecordStepCompletedAsync(SdlcStage.Requirements, nameof(RequirementsStep), ct);
         }
         catch (Exception ex)
         {
-            if (telemetry != null)
-                await telemetry.RecordStepFailedAsync(SdlcStage.Requirements, nameof(RequirementsStep), ex, ct);
+            await telemetry.RecordStepFailedAsync(SdlcStage.Requirements, nameof(RequirementsStep), ex, ct);
             throw;
         }
         finally
         {
             sw.Stop();
-            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds, new KeyValuePair<string, object?>[] { new("sdlc.stage", "Requirements") });
+            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds, 
+                new KeyValuePair<string, object?>[] { new("sdlc.stage", "Requirements") });
         }
     }
 }

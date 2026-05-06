@@ -19,8 +19,8 @@ public class BuildStep
         RequirementsSpec spec,
         ISweAfClient sweAf,
         IArtifactStore artifacts,
+        IPipelineTelemetry telemetry,
         ILogger<BuildStep> logger,
-        IPipelineTelemetry? telemetry = null,
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -72,13 +72,11 @@ public class BuildStep
                 Id = SdlcEvents.BuildComplete,
                 Data = result
             }, ct);
-            if (telemetry != null)
-                await telemetry.RecordStepCompletedAsync(SdlcStage.Build, nameof(BuildStep), ct);
+            await telemetry.RecordStepCompletedAsync(SdlcStage.Build, nameof(BuildStep), ct);
         }
         catch (Exception ex)
         {
-            if (telemetry != null)
-                await telemetry.RecordStepFailedAsync(SdlcStage.Build, nameof(BuildStep), ex, ct);
+            await telemetry.RecordStepFailedAsync(SdlcStage.Build, nameof(BuildStep), ex, ct);
             throw;
         }
         finally

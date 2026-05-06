@@ -15,7 +15,7 @@ public class LearnStep
         BuildResult buildResult,
         IKernelFactory kernelFactory,
         IArtifactStore artifacts,
-        IPipelineTelemetry? telemetry = null,
+        IPipelineTelemetry telemetry,
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -53,13 +53,11 @@ public class LearnStep
 
             await artifacts.SaveAsync(report);
             await context.EmitEventAsync(new KernelProcessEvent { Id = SdlcEvents.LearnComplete, Data = report }, ct);
-            if (telemetry != null)
-                await telemetry.RecordStepCompletedAsync(SdlcStage.Learn, nameof(LearnStep), ct);
+            await telemetry.RecordStepCompletedAsync(SdlcStage.Learn, nameof(LearnStep), ct);
         }
         catch (Exception ex)
         {
-            if (telemetry != null)
-                await telemetry.RecordStepFailedAsync(SdlcStage.Learn, nameof(LearnStep), ex, ct);
+            await telemetry.RecordStepFailedAsync(SdlcStage.Learn, nameof(LearnStep), ex, ct);
             throw;
         }
         finally

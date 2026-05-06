@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
 using SDLC.Telemetry;
@@ -14,7 +13,7 @@ public class ResearchStep
         SdlcRunConfig config,
         IKernelFactory kernelFactory,
         IArtifactStore artifacts,
-        IPipelineTelemetry? telemetry = null,
+        IPipelineTelemetry telemetry,
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -49,19 +48,18 @@ public class ResearchStep
                 Id = SdlcEvents.ResearchComplete,
                 Data = brief
             }, ct);
-            if (telemetry != null)
-                await telemetry.RecordStepCompletedAsync(SdlcStage.Research, nameof(ResearchStep), ct);
+            await telemetry.RecordStepCompletedAsync(SdlcStage.Research, nameof(ResearchStep), ct);
         }
         catch (Exception ex)
         {
-            if (telemetry != null)
-                await telemetry.RecordStepFailedAsync(SdlcStage.Research, nameof(ResearchStep), ex, ct);
+            await telemetry.RecordStepFailedAsync(SdlcStage.Research, nameof(ResearchStep), ex, ct);
             throw;
         }
         finally
         {
             sw.Stop();
-            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds, new KeyValuePair<string, object?>[] { new("sdlc.stage", "Research") });
+            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds, 
+                new KeyValuePair<string, object?>[] { new("sdlc.stage", "Research") });
         }
     }
 }

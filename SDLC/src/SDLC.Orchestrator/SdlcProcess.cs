@@ -37,20 +37,14 @@ public class StageGateStep
     }
 }
 
-public class PipelineRunnerService : IPipelineRunner
+public class PipelineRunnerService(
+    ISdlcProcessFactory processFactory,
+    ILogger<PipelineRunnerService> logger,
+    IPipelineTelemetry telemetry)
+    : IPipelineRunner
 {
-    private readonly ISdlcProcessFactory _processFactory;
-    private readonly ILogger<PipelineRunnerService> _logger;
-    private readonly IPipelineTelemetry? _telemetry;
     private readonly ConcurrentDictionary<Guid, object> _activeRuns = new();
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<GateResolution>> _pendingGates = new();
-
-    public PipelineRunnerService(ISdlcProcessFactory processFactory, ILogger<PipelineRunnerService> logger, IPipelineTelemetry? telemetry = null)
-    {
-        _processFactory = processFactory;
-        _logger = logger;
-        _telemetry = telemetry;
-    }
 
     public int ActiveRunCount => _activeRuns.Count;
 
@@ -64,29 +58,24 @@ public class PipelineRunnerService : IPipelineRunner
         return tcs.Task;
     }
 
-    public virtual Task EnqueueAsync(SdlcRunConfig config, CancellationToken ct = default)
+    public virtual async Task EnqueueAsync(SdlcRunConfig config, CancellationToken ct = default)
     {
         if (!_activeRuns.TryAdd(config.RunId, new object()))
             throw new InvalidOperationException($"Run {config.RunId} is already active.");
 
-        _logger.LogInformation("Starting SDLC run {RunId}", config.RunId);
-        if (_telemetry != null)
-            _telemetry.StartPipelineRunAsync(config.RunId, config.ProjectBrief, ct);
+        logger.LogInformation("Starting SDLC run {RunId}", config.RunId);
+        await telemetry.StartPipelineRunAsync(config.RunId, config.ProjectBrief, ct);
 
-        var handle = _processFactory.StartAsync(config);
-        _ = handle.Task.ContinueWith(t =>
+        var handle = processFactory.StartAsync(config);
+        _ = handle.Task.ContinueWith(async t =>
         {
             _activeRuns.TryRemove(config.RunId, out _);
-            if (_telemetry != null)
-                _telemetry.CompletePipelineRunAsync(config.RunId, ct);
-            SdlcTelemetry.RunsCompleted.Add(1);
+            await telemetry.CompletePipelineRunAsync(config.RunId, ct);
             if (t.IsFaulted)
-                _logger.LogError(t.Exception, "Run {RunId} failed", config.RunId);
+                logger.LogError(t.Exception, "Run {RunId} failed", config.RunId);
             else
-                _logger.LogInformation("Run {RunId} completed", config.RunId);
+                logger.LogInformation("Run {RunId} completed", config.RunId);
         }, TaskScheduler.Default);
-
-        return Task.CompletedTask;
     }
 
     public virtual async Task ResumeGateAsync(Guid runId, Guid gateId, GateDecision decision, string? notes, CancellationToken ct = default)
@@ -97,12 +86,10 @@ public class PipelineRunnerService : IPipelineRunner
         if (_pendingGates.TryRemove(gateId, out var tcs))
         {
             tcs.TrySetResult(new GateResolution(gateId, decision, notes));
-            if (decision == GateDecision.Approved && _telemetry != null)
-                await _telemetry.RecordGateApprovedAsync(gateId, ct);
-            else if (decision == GateDecision.Rejected && _telemetry != null)
-                await _telemetry.RecordGateRejectedAsync(gateId, ct);
-            SdlcTelemetry.GatesApproved.Add(decision == GateDecision.Approved ? 1 : 0);
-            SdlcTelemetry.GatesRejected.Add(decision == GateDecision.Rejected ? 1 : 0);
+            if (decision == GateDecision.Approved)
+                await telemetry.RecordGateApprovedAsync(gateId, ct);
+            else if (decision == GateDecision.Rejected)
+                await telemetry.RecordGateRejectedAsync(gateId, ct);
         }
     }
 }

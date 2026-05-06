@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using SDLC.Contracts;
 
 namespace SDLC.Telemetry;
 
@@ -13,4 +14,16 @@ public static class SdlcTelemetry
     public static readonly Counter<long> GatesApproved = Meter.CreateCounter<long>("sdlc.gates_approved");
     public static readonly Counter<long> GatesRejected = Meter.CreateCounter<long>("sdlc.gates_rejected");
     public static readonly Histogram<double> StageDuration = Meter.CreateHistogram<double>("sdlc.stage_duration_ms");
+
+    public static IPipelineTelemetry? Instance { get; set; }
+
+    public static void RecordStepCompleted(SdlcStage stage, string stepName)
+    {
+        _ = Instance?.RecordStepCompletedAsync(stage, stepName, CancellationToken.None);
+    }
+
+    public static void RecordStepFailed(SdlcStage stage, string stepName, Exception ex)
+    {
+        _ = Instance?.RecordStepFailedAsync(stage, stepName, ex, CancellationToken.None);
+    }
 }

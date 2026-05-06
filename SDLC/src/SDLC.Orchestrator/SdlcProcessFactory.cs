@@ -18,9 +18,9 @@ public class SdlcProcessFactory(
     IArtifactStore artifactStore,
     IStageGateStore gateStore,
     INotificationService notifications,
+    IPipelineTelemetry telemetry,
     PipelineRunnerService runner,
-    ILogger<SdlcProcessFactory> logger,
-    IPipelineTelemetry? telemetry = null) : ISdlcProcessFactory
+    ILogger<SdlcProcessFactory> logger) : ISdlcProcessFactory
 {
     public ProcessHandle StartAsync(SdlcRunConfig config)
     {
@@ -30,10 +30,8 @@ public class SdlcProcessFactory(
 
     private async Task RunPipelineAsync(SdlcRunConfig config, CancellationToken ct)
     {
-        if (telemetry != null)
-            await telemetry.StartPipelineRunAsync(config.RunId, config.ProjectBrief, ct);
+        await telemetry.StartPipelineRunAsync(config.RunId, config.ProjectBrief, ct);
         logger.LogInformation("Pipeline started for run {RunId}", config.RunId);
-        SdlcTelemetry.RunsStarted.Add(1);
 
         try
         {
@@ -64,21 +62,17 @@ public class SdlcProcessFactory(
 
             // Stage 5: Learn - placeholder
             // var learnContext = new CapturingContext();
-            // await new LearnStep().RunAsync(learnContext, config, latestSpec, buildResult, kernelFactory, artifactStore, telemetry, ct);
-
-            logger.LogInformation("Pipeline complete for run {RunId}", config.RunId);
-            if (telemetry != null)
-                await telemetry.CompletePipelineRunAsync(config.RunId, ct);
-            SdlcTelemetry.RunsCompleted.Add(1);
+            // await new LearnStep().RunAsync(learnContext, config, latestSpec, buildResult, kernelFactory, artifactStore, ct);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Pipeline failed for run {RunId}", config.RunId);
-            if (telemetry != null)
-                await telemetry.CompletePipelineRunAsync(config.RunId, ct);
-            SdlcTelemetry.RunsCompleted.Add(1);
+            await telemetry.CompletePipelineRunAsync(config.RunId, ct);
             throw;
         }
+        
+        logger.LogInformation("Pipeline complete for run {RunId}", config.RunId);
+        await telemetry.CompletePipelineRunAsync(config.RunId, ct);
     }
 
     private async Task WaitForGateWithApprovalAsync(SdlcArtifact artifact, CancellationToken ct)
@@ -97,9 +91,9 @@ public class SdlcProcessFactory(
         var resolution = await runner.WaitForGateAsync(gate.GateId, ct);
         await gateStore.ResolveAsync(gate.GateId, resolution.Decision, resolution.Notes);
 
-        if (resolution.Decision == GateDecision.Approved && telemetry != null)
+        if (resolution.Decision == GateDecision.Approved)
             await telemetry.RecordGateApprovedAsync(gate.GateId, ct);
-        else if (resolution.Decision == GateDecision.Rejected && telemetry != null)
+        else if (resolution.Decision == GateDecision.Rejected)
             await telemetry.RecordGateRejectedAsync(gate.GateId, ct);
 
         if (resolution.Decision == GateDecision.Rejected)

@@ -54,21 +54,25 @@ public class PipelineTelemetry : IPipelineTelemetry
 
     public async Task RecordGateApprovedAsync(Guid gateId, CancellationToken ct = default)
     {
+        SdlcTelemetry.GatesApproved.Add(1);
         _gateEvents.Enqueue(new GateEvent(gateId, true, DateTimeOffset.UtcNow));
     }
 
     public async Task RecordGateRejectedAsync(Guid gateId, CancellationToken ct = default)
     {
+        SdlcTelemetry.GatesRejected.Add(1);
         _gateEvents.Enqueue(new GateEvent(gateId, false, DateTimeOffset.UtcNow));
     }
 
     public async Task StartPipelineRunAsync(Guid runId, string projectBrief, CancellationToken ct = default)
     {
+        SdlcTelemetry.RunsStarted.Add(1);
         _pipelineEvents.Enqueue(new PipelineEvent(runId, projectBrief, DateTimeOffset.UtcNow, null));
     }
 
     public async Task CompletePipelineRunAsync(Guid runId, CancellationToken ct = default)
     {
+        SdlcTelemetry.RunsCompleted.Add(1);
         _pipelineEvents.Enqueue(new PipelineEvent(runId, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
     }
 

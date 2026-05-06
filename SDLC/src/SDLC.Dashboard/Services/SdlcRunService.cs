@@ -39,35 +39,23 @@ public record ArtifactSummary(
     ArtifactStatus Status,
     DateTimeOffset CreatedAt);
 
-public class SdlcRunService : ISdlcRunService
+public class SdlcRunService(
+    IArtifactStore artifactStore,
+    IStageGateStore gateStore,
+    IPipelineTelemetry telemetry,
+    IPipelineRunner? runner = null)
+    : ISdlcRunService
 {
-    private readonly IArtifactStore _artifactStore;
-    private readonly IStageGateStore _gateStore;
-    private readonly IPipelineRunner? _runner;
-    private readonly IPipelineTelemetry? _telemetry;
-
-    public SdlcRunService(
-        IArtifactStore artifactStore,
-        IStageGateStore gateStore,
-        IPipelineRunner? runner = null,
-        IPipelineTelemetry? telemetry = null)
-    {
-        _artifactStore = artifactStore;
-        _gateStore = gateStore;
-        _runner = runner;
-        _telemetry = telemetry;
-    }
-
     public async Task<IReadOnlyList<RunSummary>> GetActiveRunsAsync(CancellationToken ct = default)
     {
         // Get all run IDs from artifacts
-        var runIds = await _artifactStore.GetAllRunIdsAsync();
+        var runIds = await artifactStore.GetAllRunIdsAsync();
         var results = new List<RunSummary>();
 
         foreach (var runId in runIds)
         {
-            var artifacts = await _artifactStore.GetAllForRunAsync(runId);
-            var gates = await _gateStore.GetPendingForRunAsync(runId);
+            var artifacts = await artifactStore.GetAllForRunAsync(runId);
+            var gates = await gateStore.GetPendingForRunAsync(runId);
 
             if (!artifacts.Any())
                 continue;
@@ -75,7 +63,7 @@ public class SdlcRunService : ISdlcRunService
             var lastStage = artifacts.MaxBy(a => a.CreatedAt)?.Stage ?? SdlcStage.Research;
             var pendingGates = gates.Select(g => new GateSummary(g.GateId, g.Stage, g.Status, g.Notes)).ToList();
 
-            var isActive = _runner?.IsRunActive(runId) ?? false;
+            var isActive = runner?.IsRunActive(runId) ?? false;
             results.Add(new RunSummary(runId, isActive, lastStage, pendingGates.AsReadOnly()));
         }
 
@@ -84,14 +72,14 @@ public class SdlcRunService : ISdlcRunService
 
     public async Task<RunDetail?> GetRunDetailAsync(Guid runId, CancellationToken ct = default)
     {
-        var artifacts = await _artifactStore.GetAllForRunAsync(runId);
+        var artifacts = await artifactStore.GetAllForRunAsync(runId);
         if (!artifacts.Any())
             return null;
 
         var gates = new List<StageGate>();
         try
         {
-            gates = (await _gateStore.GetPendingForRunAsync(runId)).ToList();
+            gates = (await gateStore.GetPendingForRunAsync(runId)).ToList();
         }
         catch
         {
@@ -110,7 +98,7 @@ public class SdlcRunService : ISdlcRunService
 
         return new RunDetail(
             runId,
-            _runner?.IsRunActive(runId) ?? false,
+            runner?.IsRunActive(runId) ?? false,
             lastStage,
             artifactSummaries.AsReadOnly(),
             allGates.AsReadOnly());
@@ -118,20 +106,20 @@ public class SdlcRunService : ISdlcRunService
 
     public async Task ApproveGateAsync(Guid gateId, string? notes = null, CancellationToken ct = default)
     {
-        var gate = await _gateStore.GetAsync(gateId);
+        var gate = await gateStore.GetAsync(gateId);
         if (gate is null)
             throw new KeyNotFoundException($"Gate {gateId} not found");
-        await _gateStore.ResolveAsync(gateId, GateDecision.Approved, notes);
-        if (_telemetry != null)
-            await _telemetry.RecordGateApprovedAsync(gateId, ct);
-        if (_runner != null)
-            Task.Run(() => _runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Approved, notes, ct));
+        
+        await gateStore.ResolveAsync(gateId, GateDecision.Approved, notes);
+        await telemetry.RecordGateApprovedAsync(gateId, ct);
+        
+        if (runner != null)
+            Task.Run(() => runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Approved, notes, ct));
     }
 
     public async Task RejectGateAsync(Guid gateId, string notes, CancellationToken ct = default)
     {
-        await _gateStore.ResolveAsync(gateId, GateDecision.Rejected, notes);
-        if (_telemetry != null)
-            await _telemetry.RecordGateRejectedAsync(gateId, ct);
+        await gateStore.ResolveAsync(gateId, GateDecision.Rejected, notes);
+        await telemetry.RecordGateRejectedAsync(gateId, ct);
     }
 }

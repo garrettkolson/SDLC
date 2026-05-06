@@ -5,6 +5,7 @@ using NUnit.Framework;
 using SDLC.Agents;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
+using SDLC.Telemetry;
 
 namespace SDLC.Agents.Tests;
 
@@ -15,6 +16,7 @@ public class ResearchStepTests
     private IKernelFactory _kernelFactory = null!;
     private CapturingContext _context = null!;
     private IKernel _fakeKernel = null!;
+    private IPipelineTelemetry telemetry = Substitute.For<IPipelineTelemetry>();
 
     [SetUp]
     public void SetUp()
@@ -34,7 +36,7 @@ public class ResearchStepTests
         var config = new SdlcRunConfig { ProjectBrief = "Build a reporting tool" };
 
         var step = new ResearchStep();
-        await step.RunAsync(_context, config, _kernelFactory, _artifacts);
+        await step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry);
 
         await _artifacts.Received(1).SaveAsync(Arg.Is<ResearchBrief>(b => b.RunId == config.RunId));
     }
@@ -47,7 +49,7 @@ public class ResearchStepTests
         var config = new SdlcRunConfig { ProjectBrief = "Build a reporting tool" };
 
         var step = new ResearchStep();
-        await step.RunAsync(_context, config, _kernelFactory, _artifacts);
+        await step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry);
 
         _context.Events.Should().ContainSingle();
         _context.Events[0].Id.Should().Be(SdlcEvents.ResearchComplete);
@@ -69,7 +71,7 @@ public class ResearchStepTests
 
         var config = new SdlcRunConfig { ProjectBrief = "Build a tool" };
         var step = new ResearchStep();
-        await step.RunAsync(_context, config, _kernelFactory, _artifacts);
+        await step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry);
 
         callCount.Should().BeGreaterThanOrEqualTo(3);
     }
@@ -82,7 +84,7 @@ public class ResearchStepTests
         var config = new SdlcRunConfig { ProjectBrief = "Build a tool" };
 
         var step = new ResearchStep();
-        var act = () => step.RunAsync(_context, config, _kernelFactory, _artifacts);
+        var act = () => step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry);
 
         await act.Should().CompleteWithinAsync(TimeSpan.FromSeconds(5));
     }
@@ -99,7 +101,7 @@ public class ResearchStepTests
         await _artifacts.SaveAsync(Arg.Do<ResearchBrief>(b => saved = b));
 
         var step = new ResearchStep();
-        await step.RunAsync(_context, config, _kernelFactory, _artifacts);
+        await step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry);
 
         saved!.RunId.Should().Be(runId);
     }

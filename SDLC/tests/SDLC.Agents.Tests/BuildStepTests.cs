@@ -5,6 +5,7 @@ using NUnit.Framework;
 using SDLC.Agents;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
+using SDLC.Telemetry;
 
 namespace SDLC.Agents.Tests;
 
@@ -17,6 +18,7 @@ public class BuildStepTests
 
     private RequirementsSpec _spec = null!;
     private ArchitectureRecord _arch = null!;
+    private IPipelineTelemetry telemetry = Substitute.For<IPipelineTelemetry>();
 
     public BuildStepTests()
     {
@@ -38,7 +40,7 @@ public class BuildStepTests
     {
         _sweAf.AddStatus(new SweAfStatus { State = SweAfState.Succeeded, IsTerminal = true, Logs = "OK" });
 
-        await new BuildStep().RunAsync(_capturingContext(), _arch, _spec, _sweAf, _artifacts, _logger);
+        await new BuildStep().RunAsync(_capturingContext(), _arch, _spec, _sweAf, _artifacts, telemetry, _logger);
 
         _sweAf.SubmitCalled.Should().BeTrue();
     }
@@ -48,7 +50,7 @@ public class BuildStepTests
     {
         _sweAf.AddStatus(new SweAfStatus { State = SweAfState.Succeeded, IsTerminal = true, Logs = "OK" });
 
-        await new BuildStep().RunAsync(_capturingContext(), _arch, _spec, _sweAf, _artifacts, _logger);
+        await new BuildStep().RunAsync(_capturingContext(), _arch, _spec, _sweAf, _artifacts, telemetry, _logger);
 
         _artifacts.Saved.Should().ContainSingle();
         _artifacts.Saved[0].Should().BeAssignableTo<BuildResult>();
@@ -60,7 +62,7 @@ public class BuildStepTests
     {
         _sweAf.AddStatus(new SweAfStatus { State = SweAfState.Failed, IsTerminal = true, Logs = "ERR" });
 
-        await new BuildStep().RunAsync(_capturingContext(), _arch, _spec, _sweAf, _artifacts, _logger);
+        await new BuildStep().RunAsync(_capturingContext(), _arch, _spec, _sweAf, _artifacts, telemetry, _logger);
 
         _artifacts.Saved.Should().ContainSingle();
         ((BuildResult)_artifacts.Saved[0]).Success.Should().BeFalse();
@@ -72,7 +74,7 @@ public class BuildStepTests
         _sweAf.AddStatus(new SweAfStatus { State = SweAfState.Succeeded, IsTerminal = true, Logs = "OK" });
 
         var cap = new CapturingContext();
-        await new BuildStep().RunAsync(cap, _arch, _spec, _sweAf, _artifacts, _logger);
+        await new BuildStep().RunAsync(cap, _arch, _spec, _sweAf, _artifacts, telemetry, _logger);
 
         cap.Events.Should().ContainSingle();
         cap.Events[0].Id.Should().Be(SdlcEvents.BuildComplete);
@@ -84,7 +86,7 @@ public class BuildStepTests
     {
         _sweAf.AddStatus(new SweAfStatus { State = SweAfState.Succeeded, IsTerminal = true, Logs = "OK" });
 
-        await new BuildStep().RunAsync(_capturingContext(), _arch, _spec, _sweAf, _artifacts, _logger);
+        await new BuildStep().RunAsync(_capturingContext(), _arch, _spec, _sweAf, _artifacts, telemetry, _logger);
 
         _artifacts.Saved.Should().ContainSingle();
         ((BuildResult)_artifacts.Saved[0]).SweAfRunId.Should().Be("run-001");
@@ -95,7 +97,7 @@ public class BuildStepTests
     {
         _sweAf.AddStatus(new SweAfStatus { State = SweAfState.Succeeded, IsTerminal = true, Logs = "OK" });
 
-        await new BuildStep().RunAsync(_capturingContext(), _arch, _spec, _sweAf, _artifacts, _logger);
+        await new BuildStep().RunAsync(_capturingContext(), _arch, _spec, _sweAf, _artifacts, telemetry, _logger);
 
         _artifacts.Saved.Should().ContainSingle();
         ((BuildResult)_artifacts.Saved[0]).RunId.Should().Be(_spec.RunId);

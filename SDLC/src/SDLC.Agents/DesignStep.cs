@@ -15,7 +15,7 @@ public class DesignStep
         RequirementsSpec spec,
         IKernelFactory kernelFactory,
         IArtifactStore artifacts,
-        IPipelineTelemetry? telemetry = null,
+        IPipelineTelemetry telemetry,
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -47,19 +47,18 @@ public class DesignStep
 
             await artifacts.SaveAsync(record);
             await context.EmitEventAsync(new KernelProcessEvent { Id = SdlcEvents.DesignComplete, Data = record }, ct);
-            if (telemetry != null)
-                await telemetry.RecordStepCompletedAsync(SdlcStage.Design, nameof(DesignStep), ct);
+            await telemetry.RecordStepCompletedAsync(SdlcStage.Design, nameof(DesignStep), ct);
         }
         catch (Exception ex)
         {
-            if (telemetry != null)
-                await telemetry.RecordStepFailedAsync(SdlcStage.Design, nameof(DesignStep), ex, ct);
+            await telemetry.RecordStepFailedAsync(SdlcStage.Design, nameof(DesignStep), ex, ct);
             throw;
         }
         finally
         {
             sw.Stop();
-            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds, new KeyValuePair<string, object?>[] { new("sdlc.stage", "Design") });
+            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds, 
+                new KeyValuePair<string, object?>[] { new("sdlc.stage", "Design") });
         }
     }
 }
