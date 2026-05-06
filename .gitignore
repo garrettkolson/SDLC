@@ -27,8 +27,5 @@ obj/
 TestResults/
 CoverageResults/
 
-## Aspire / Docker
-docker/
-
 ## Misc
 *.log
