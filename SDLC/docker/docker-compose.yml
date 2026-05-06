@@ -1,0 +1,31 @@
+services:
+
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
+    ports:
+      - "18888:18888"
+      - "18889:18889"
+    environment:
+      DASHBOARD__OTLP__AUTHMODE: Unsecured
+
+  app:
+    build:
+      context: ../src/SDLC.Dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "5200:8080"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+      SWEAF__BaseUrl: http://host.docker.internal:5100
+      ConnectionStrings__ArtifactDb: Data Source=/data/artifacts.db
+      ArtifactStore__BasePath: /data/artifacts
+      Notifications__Slack__WebhookBaseUrl: https://hooks.slack.com
+      Notifications__Slack__WebhookPath: ${SLACK_WEBHOOK_PATH}
+      Dashboard__BaseUrl: http://localhost:5200
+    volumes:
+      - artifact-data:/data
+    depends_on:
+      - aspire-dashboard
+
+volumes:
+  artifact-data:
