@@ -454,6 +454,8 @@ public Task CancelRunAsync(Guid runId)
 
 **Done when:** Cancel API call → in-flight stage stops at next ct check, pipeline marks `Cancelled`, telemetry records.
 
+**Resolved:** `ISdlcProcessFactory.StartAsync` and `ResumeAsync` accept `CancellationToken ct = default`. `SdlcProcessFactory` forwards ct to `RunPipelineAsync`/`ResumePipelineAsync`. `PipelineRunnerService` owns `ConcurrentDictionary<Guid, CancellationTokenSource> _runCancellation`, creates linked CTS on enqueue, passes token to factory. `CancelRunAsync` removes and cancels CTS. CTS removed in run completion continuation. `IRunStore.CancelRunAsync` persists `status = 'Cancelled'` to DB. `IPipelineTelemetry.RecordRunCancelledAsync` records event + `RunsCancelled` metric. `SdlcRunService.CancelRunAsync` handles DB + telemetry, delegates token cancel to runner. `IPipelineRunner.CancelRunAsync` added to interface. DI updated in `Program.cs`. 9 new tests: 5 unit tests in `PipelineRunnerServiceTests`, 2 integration tests in `PipelineCancellationTests`, 2 dashboard tests in `SdlcRunServiceTests`. All 109 tests across 8 test projects pass.
+
 ---
 
 ### P1-12. Fire-and-forget continuation can drop runs silently
@@ -906,7 +908,7 @@ public async Task ResumeGateAsync(...)
 |-------|-------|------------|
 | 0 Blockers           | 100 | — |
 | 1 AI Exec            | 100 | — |
-| 2 Wiring             | 75  | P0-6 recovery, P1-11 cancellation, P1-12 fire-and-forget |
+| 2 Wiring             | 88  | P1-12 fire-and-forget |
 | 3 Hardening          | 90  | P2-13 SQLite tx |
 | 4 Notifications      | 100 | — |
 | 5 Dashboard          | 100 | — |
