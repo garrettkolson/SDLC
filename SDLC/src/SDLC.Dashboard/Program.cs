@@ -1,5 +1,8 @@
 using SDLC.Agents;
+using SDLC.Contracts;
 using SDLC.Dashboard.Components;
+using SDLC.Notifications;
+using SDLC.Orchestrator;
 using SDLC.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -34,6 +37,20 @@ builder.Services.AddSingleton<SDLC.Notifications.INotificationService>(sp =>
 
 // Telemetry
 builder.Services.AddSingleton<IPipelineTelemetry, PipelineTelemetry>();
+
+// Orchestrator
+var modelRouting = builder.Configuration.GetSection("ModelRouting").Get<ModelRoutingConfig>()
+    ?? ModelRoutingConfig.Default;
+builder.Services.AddSingleton(modelRouting);
+
+var dashboardBaseUrl = builder.Configuration["Dashboard:BaseUrl"]
+    ?? "http://localhost:8080";
+builder.Services.AddSingleton<DashboardUrlBuilder>(new DashboardUrlBuilder(dashboardBaseUrl));
+
+builder.Services.AddSingleton<SdlcProcessFactory>();
+builder.Services.AddSingleton<ISdlcProcessFactory>(sp => sp.GetRequiredService<SdlcProcessFactory>());
+builder.Services.AddSingleton<PipelineRunnerService>();
+builder.Services.AddSingleton<IPipelineRunner>(sp => sp.GetRequiredService<PipelineRunnerService>());
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter("SDLC"));
 
@@ -42,7 +59,8 @@ builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService>(sp =>
     new SDLC.Dashboard.Services.SdlcRunService(
         sp.GetRequiredService<SDLC.Infrastructure.IArtifactStore>(),
         sp.GetRequiredService<SDLC.Infrastructure.IStageGateStore>(),
-        sp.GetRequiredService<IPipelineTelemetry>()));
+        sp.GetRequiredService<IPipelineTelemetry>(),
+        sp.GetRequiredService<IPipelineRunner>()));
 
 var app = builder.Build();
 

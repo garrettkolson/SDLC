@@ -160,6 +160,7 @@ public class SdlcRunServiceTests
 
         gate.Status.Should().Be(GateStatus.Approved);
         gate.Notes.Should().BeNull();
+        await WaitForRunnerAsync();
         _runner.ResumedGate.Should().Be(gateId);
     }
 
@@ -193,6 +194,29 @@ public class SdlcRunServiceTests
 
         gate.Status.Should().Be(GateStatus.Rejected);
         gate.Notes.Should().Be(notes);
+        await WaitForRunnerAsync();
+        _runner.ResumedGate.Should().Be(gateId);
+    }
+
+    [Test]
+    public async Task RejectGateAsync_Throws_WhenGateNotFound()
+    {
+        var gateId = Guid.NewGuid();
+
+        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
+
+        var act = async () => await service.RejectGateAsync(gateId, "reason");
+        await act.Should().ThrowAsync<KeyNotFoundException>();
+    }
+
+    private async Task WaitForRunnerAsync()
+    {
+        for (int i = 0; i < 20; i++)
+        {
+            if (_runner.ResumedGate != Guid.Empty)
+                return;
+            await Task.Delay(50);
+        }
     }
 
     private class TestArtifactStore : IArtifactStore

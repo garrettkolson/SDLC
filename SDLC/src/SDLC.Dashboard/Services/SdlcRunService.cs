@@ -43,7 +43,7 @@ public class SdlcRunService(
     IArtifactStore artifactStore,
     IStageGateStore gateStore,
     IPipelineTelemetry telemetry,
-    IPipelineRunner? runner = null)
+    IPipelineRunner runner)
     : ISdlcRunService
 {
     public async Task<IReadOnlyList<RunSummary>> GetActiveRunsAsync(CancellationToken ct = default)
@@ -63,7 +63,7 @@ public class SdlcRunService(
             var lastStage = artifacts.MaxBy(a => a.CreatedAt)?.Stage ?? SdlcStage.Research;
             var pendingGates = gates.Select(g => new GateSummary(g.GateId, g.Stage, g.Status, g.Notes)).ToList();
 
-            var isActive = runner?.IsRunActive(runId) ?? false;
+            var isActive = runner.IsRunActive(runId);
             results.Add(new RunSummary(runId, isActive, lastStage, pendingGates.AsReadOnly()));
         }
 
@@ -98,7 +98,7 @@ public class SdlcRunService(
 
         return new RunDetail(
             runId,
-            runner?.IsRunActive(runId) ?? false,
+            runner.IsRunActive(runId),
             lastStage,
             artifactSummaries.AsReadOnly(),
             allGates.AsReadOnly());
@@ -113,13 +113,17 @@ public class SdlcRunService(
         await gateStore.ResolveAsync(gateId, GateDecision.Approved, notes);
         await telemetry.RecordGateApprovedAsync(gateId, ct);
         
-        if (runner != null)
-            Task.Run(() => runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Approved, notes, ct));
+        Task.Run(() => runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Approved, notes, ct));
     }
 
     public async Task RejectGateAsync(Guid gateId, string notes, CancellationToken ct = default)
     {
+        var gate = await gateStore.GetAsync(gateId)
+            ?? throw new KeyNotFoundException($"Gate {gateId} not found");
+
         await gateStore.ResolveAsync(gateId, GateDecision.Rejected, notes);
         await telemetry.RecordGateRejectedAsync(gateId, ct);
+
+        Task.Run(() => runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Rejected, notes, ct));
     }
 }

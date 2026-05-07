@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SDLC.Agents\SDLC.Agents.csproj" />
+    <ProjectReference Include="..\SDLC.Notifications\SDLC.Notifications.csproj" />
     <ProjectReference Include="..\SDLC.Contracts\SDLC.Contracts.csproj" />
     <ProjectReference Include="..\SDLC.Infrastructure\SDLC.Infrastructure.csproj" />
     <ProjectReference Include="..\SDLC.Orchestrator\SDLC.Orchestrator.csproj" />

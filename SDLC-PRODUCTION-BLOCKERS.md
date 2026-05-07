@@ -34,13 +34,13 @@ Roadmap completion: ~82%. Phases 0, 1, 8 done. P0-1 resolved. Phases 2, 3, 5, 6,
 
 ### P0-2. Gate rejection deadlocks pipeline
 
-**File:** `SDLC/src/SDLC.Dashboard/Services/SdlcRunService.cs:120-124`
+**File:** `SDLC/src/SDLC.Dashboard/Services/SdlcRunService.cs:119-128`
 
-**Problem:** `RejectGateAsync` writes DB but never calls `runner.ResumeGateAsync`. `TaskCompletionSource` in `_pendingGates` never resolves. Pipeline waits forever.
+**Problem:** ~~`RejectGateAsync` writes DB but never calls `runner.ResumeGateAsync`. `TaskCompletionSource` in `_pendingGates` never resolves. Pipeline waits forever.~~
 
-**Mitigation:** Symmetric with `ApproveGateAsync`:
+**Mitigation:** ~~Symmetric with `ApproveGateAsync`:~~
 
-```csharp
+~~```csharp
 public async Task RejectGateAsync(Guid gateId, string notes, CancellationToken ct = default)
 {
     var gate = await _gateStore.GetAsync(gateId)
@@ -52,11 +52,15 @@ public async Task RejectGateAsync(Guid gateId, string notes, CancellationToken c
     if (_runner != null)
         await _runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Rejected, notes, ct);
 }
-```
+```~~
 
-Also drop the `IPipelineRunner? runner = null` nullable. Make it required (see P0-4).
+~~Also drop the `IPipelineRunner? runner = null` nullable. Make it required (see P0-4).~~
 
-**Done when:** Test "reject pending gate → factory throws GateRejectedException → pipeline state transitions to Failed."
+~~**Done when:** Test "reject pending gate → factory throws GateRejectedException → pipeline state transitions to Failed."~~
+
+**Done when:** ~~Test "reject pending gate → factory throws GateRejectedException → pipeline state transitions to Failed."~~
+
+**Resolved:** `RejectGateAsync` now calls `gateStore.GetAsync` first to lookup the gate (same as `ApproveGateAsync`), then `runner.ResumeGateAsync()` unblocks the `TaskCompletionSource` in `_pendingGates`. `IPipelineRunner` made non-nullable in constructor. Added `SDLC.Notifications` project reference to Dashboard. Tests verify both Approve and Reject call `ResumeGateAsync` on the runner.
 
 ---
 
@@ -983,7 +987,7 @@ public async Task ResumeGateAsync(...)
 |-------|-------|------------|
 | 0 Blockers           | 100 | — |
 | 1 AI Exec            | 90  | P1-7 resilience |
-| 2 Wiring             | 65  | P0-2 reject, P0-6 recovery, P1-11 cancellation, P1-12 fire-and-forget |
+| 2 Wiring             | 75  | P0-6 recovery, P1-11 cancellation, P1-12 fire-and-forget |
 | 3 Hardening          | 80  | P0-4 DI, P2-13 SQLite tx |
 | 4 Notifications      | 70  | P1-8 retry+escalation |
 | 5 Dashboard          | 40  | P0-3 auth+audit, P0-4 DI, P0-5 pages |
@@ -991,6 +995,6 @@ public async Task ResumeGateAsync(...)
 | 7 Docker             | 60  | P2-14 hardening |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-2, P0-3, P0-4, P0-5, P0-6.
+**Top 5 must-fix before any production deploy:** P0-3, P0-4, P0-5, P0-6, P1-7.
 
 **Next 3 before scale:** P0-6, P1-7, P1-10.
