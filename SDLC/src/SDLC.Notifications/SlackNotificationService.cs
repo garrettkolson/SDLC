@@ -4,9 +4,8 @@ using SDLC.Infrastructure;
 namespace SDLC.Notifications;
 
 public class SlackNotificationService(
-    HttpClient httpClient, 
-    string webhookPath, 
-    DashboardUrlBuilder urls) 
+    HttpClient httpClient,
+    DashboardUrlBuilder urls)
     : INotificationService
 {
     public async Task SendApprovalRequestAsync(StageGate gate)
@@ -28,6 +27,6 @@ public class SlackNotificationService(
             }
         };
 
-        await httpClient.PostAsJsonAsync(webhookPath, payload);
+        await httpClient.PostAsJsonAsync("/webhook/sdlc", payload);
     }
 }

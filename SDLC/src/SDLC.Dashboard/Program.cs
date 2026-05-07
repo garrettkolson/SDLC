@@ -33,11 +33,22 @@ builder.Services.AddHttpClient<ISweAfClient>((sp, http) =>
     http.Timeout = TimeSpan.FromMinutes(30);
 });
 
+// Slack notification with resilience handler
+var slackBaseUrl = builder.Configuration["Slack:BaseUrl"]
+    ?? throw new InvalidOperationException("Slack:BaseUrl required");
+builder.Services.AddHttpClient("slack")
+    .AddHttpMessageHandler<SDLC.Notifications.ResilientSlackHandler>()
+    .ConfigureHttpClient(h =>
+    {
+        h.BaseAddress = new Uri(slackBaseUrl);
+        h.Timeout = TimeSpan.FromSeconds(30);
+    });
+builder.Services.AddSingleton<SDLC.Notifications.SlackNotificationService>();
+builder.Services.AddSingleton<SDLC.Notifications.IEmailNotificationService, SDLC.Notifications.FallbackEmailNotificationService>();
+builder.Services.AddSingleton<SDLC.Notifications.CompositeNotificationService>();
 builder.Services.AddSingleton<SDLC.Notifications.INotificationService>(sp =>
-    new SDLC.Notifications.SlackNotificationService(
-        sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
-        "/webhook/sdlc",
-        sp.GetRequiredService<SDLC.Notifications.DashboardUrlBuilder>()));
+    sp.GetRequiredService<SDLC.Notifications.CompositeNotificationService>());
+builder.Services.AddHostedService<SDLC.Notifications.GateReminderService>();
 
 // Telemetry
 builder.Services.AddSingleton<IPipelineTelemetry, PipelineTelemetry>();

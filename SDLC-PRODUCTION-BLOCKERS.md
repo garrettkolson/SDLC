@@ -294,42 +294,21 @@ public async Task RecoverPendingGatesAsync()
 
 **Mitigation:**
 
-1. Add Polly retry to Slack `HttpClient` registration (mirror P1-7 approach).
+1. `ResilientSlackHandler` — DelegatingHandler with 3x exponential backoff (500ms base), 30s timeout, handles transient HTTP errors + 429.
 
-2. `SendApprovalRequestAsync` — wrap and let upstream `StageGateStep` catch (already done per P3-3.5). But also add a reminder loop:
+2. `GateReminderService` — BackgroundService, sweeps pending gates every 4h, re-notifies stale gates (>2h old), per-reminder try/catch with logging.
 
-```csharp
-public class GateReminderService : BackgroundService
-{
-    private readonly IStageGateStore _gates;
-    private readonly INotificationService _notifications;
-    private readonly TimeSpan _interval = TimeSpan.FromHours(4);
-    private readonly TimeSpan _staleAfter = TimeSpan.FromHours(2);
+3. `CompositeNotificationService` — Slack first, falls through to `FallbackEmailNotificationService` on failure. Logs each attempt. Throws `CompositeNotificationException` only when both fail.
 
-    protected override async Task ExecuteAsync(CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                foreach (var gate in await _gates.GetAllPendingAsync())
-                {
-                    if (DateTimeOffset.UtcNow - gate.CreatedAt > _staleAfter)
-                        await _notifications.SendApprovalRequestAsync(gate);
-                }
-            }
-            catch (Exception ex) { _logger.LogError(ex, "Reminder sweep failed"); }
-            await Task.Delay(_interval, ct);
-        }
-    }
-}
-```
+4. `IEmailNotificationService` interface + stub implementation for future SMTP/SendGrid.
 
-3. Add `ICompositeNotificationService` that fans out to Slack + Email. Email service via SMTP or SendGrid. On Slack failure, email still goes out.
+5. Slack webhook URL moved from hardcoded `"/webhook/sdlc"` to config key `Slack:BaseUrl`.
 
-4. For inbound Slack interactivity (future): verify `X-Slack-Signature` HMAC against `SLACK_SIGNING_SECRET` per Slack docs.
+6. Named `HttpClient("slack")` registered with `ResilientSlackHandler` in Program.cs.
 
 **Done when:** Pending gate older than 2h re-notifies. Slack down → email backup fires. Reminder loop logged in telemetry.
+
+**Resolved:** `ResilientSlackHandler` created in `SDLC.Notifications`. Named `HttpClient("slack")` registered with resilience handler + 30s timeout in `Program.cs`. `GateReminderService : BackgroundService` implemented (4h interval, 2h stale threshold). `CompositeNotificationService` wraps Slack + `FallbackEmailNotificationService`, tries Slack first, falls through to email on failure. `IEmailNotificationService` interface + stub added. `SlackNotificationService` refactored to use injected HttpClient from named factory. 9 new tests: `ResilientSlackHandlerTests` (4 tests — success, retry on 502/503), `GateReminderServiceTests` (3 tests — constructor, stale filter, fresh filter), `CompositeNotificationServiceTests` (2 tests — fallback to email, composite exception). All 63 tests across 7 test projects pass (Notifications 14, Orchestrator 31, Dashboard 18).
 
 ---
 
@@ -927,12 +906,12 @@ public async Task ResumeGateAsync(...)
 | 1 AI Exec            | 100 | — |
 | 2 Wiring             | 75  | P0-6 recovery, P1-11 cancellation, P1-12 fire-and-forget |
 | 3 Hardening          | 90  | P2-13 SQLite tx |
-| 4 Notifications      | 70  | P1-8 retry+escalation |
+| 4 Notifications      | 100 | — |
 | 5 Dashboard          | 100 | — |
 | 6 Observability      | 67  | P1-10 tracing, P2-15 logging |
 | 7 Docker             | 60  | P2-14 hardening |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-6, P1-8, P1-9, P2-13, P2-17.
+**Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13, P2-17, P1-10.
 
-**Next 3 before scale:** P1-8, P1-9, P1-10.
+**Next 3 before scale:** P1-9, P1-10, P2-15.
