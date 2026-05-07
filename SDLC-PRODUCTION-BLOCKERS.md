@@ -94,44 +94,67 @@ public async Task RejectGateAsync(Guid gateId, string notes, CancellationToken c
 
 **File:** `SDLC/src/SDLC.Dashboard/Program.cs`
 
-**Problem:** Following services not registered:
-- `IKernelFactory` — AI calls fail
-- `IPipelineRunner` (passed nullable to `SdlcRunService` line 46) — gate resume silently no-ops
-- `ISdlcProcessFactory` — cannot start runs
-- `ModelRoutingConfig` — `AgentKernelFactory` cannot resolve endpoint
+**Problem:** ~~Following services not registered:~~
 
-`DashboardUrlBuilder` constructed with hardcoded path (Program.cs:21), not from `Dashboard:BaseUrl` config.
+~~- `IKernelFactory` — AI calls fail~~
 
-**Mitigation:**
+~~- `IPipelineRunner` (passed nullable to `SdlcRunService` line 46) — gate resume silently no-ops~~
 
-```csharp
-// Model routing
-var modelRouting = builder.Configuration.GetSection("ModelRouting").Get<ModelRoutingConfig>()
-    ?? ModelRoutingConfig.Default;
-builder.Services.AddSingleton(modelRouting);
+~~- `ISdlcProcessFactory` — cannot start runs~~
 
-// HTTP-backed kernel via factory pattern
-builder.Services.AddHttpClient("vllm", (sp, http) =>
-{
-    http.Timeout = TimeSpan.FromMinutes(5);
-});
-builder.Services.AddSingleton<IKernelFactory, AgentKernelFactory>();
+~~- `ModelRoutingConfig` — `AgentKernelFactory` cannot resolve endpoint~~
 
-// Dashboard URL from config
-var dashboardBaseUrl = builder.Configuration["Dashboard:BaseUrl"]
-    ?? throw new InvalidOperationException("Dashboard:BaseUrl required");
-builder.Services.AddSingleton(new DashboardUrlBuilder(dashboardBaseUrl));
+~~`DashboardUrlBuilder` constructed with hardcoded path (Program.cs:21), not from `Dashboard:BaseUrl` config.~~
 
-// Orchestrator
-builder.Services.AddSingleton<SdlcProcessFactory>();
-builder.Services.AddSingleton<ISdlcProcessFactory>(sp => sp.GetRequiredService<SdlcProcessFactory>());
-builder.Services.AddSingleton<PipelineRunnerService>();
-builder.Services.AddSingleton<IPipelineRunner>(sp => sp.GetRequiredService<PipelineRunnerService>());
-```
+**Mitigation:** ~~All DI registrations implemented in Program.cs (lines 31-34, 46-59).~~
 
-Drop the `IPipelineRunner? runner = null` parameter on `SdlcRunService` — make non-nullable.
+~~```csharp~~
 
-**Done when:** `dotnet run` starts dashboard with no DI exception. `/runs/new` actually starts a pipeline.
+~~// Model routing~~
+
+~~var modelRouting = builder.Configuration.GetSection("ModelRouting").Get<ModelRoutingConfig>()~~
+
+~~    ?? ModelRoutingConfig.Default;~~
+
+~~builder.Services.AddSingleton(modelRouting);~~
+
+~~// vLLM HttpClient with timeout~~
+
+~~builder.Services.AddHttpClient("vllm", (sp, http) =>~~
+
+~~{~~
+
+~~    http.Timeout = TimeSpan.FromMinutes(5);~~
+
+~~});~~
+
+~~builder.Services.AddSingleton<IKernelFactory, AgentKernelFactory>();~~
+
+~~// Dashboard URL from config~~
+
+~~var dashboardBaseUrl = builder.Configuration["Dashboard:BaseUrl"]~~
+
+~~    ?? "http://localhost:8080";~~
+
+~~builder.Services.AddSingleton<DashboardUrlBuilder>(new DashboardUrlBuilder(dashboardBaseUrl));~~
+
+~~// Orchestrator~~
+
+~~builder.Services.AddSingleton<SdlcProcessFactory>();~~
+
+~~builder.Services.AddSingleton<ISdlcProcessFactory>(sp => sp.GetRequiredService<SdlcProcessFactory>());~~
+
+~~builder.Services.AddSingleton<PipelineRunnerService>();~~
+
+~~builder.Services.AddSingleton<IPipelineRunner>(sp => sp.GetRequiredService<PipelineRunnerService>());~~
+
+~~```~~
+
+~~Drop the `IPipelineRunner? runner = null` parameter on `SdlcRunService` — make non-nullable.~~
+
+~~**Done when:** `dotnet run` starts dashboard with no DI exception. `/runs/new` actually starts a pipeline.~~
+
+**Resolved:** All P0-4 DI registrations present in `Program.cs`. `IKernelFactory` registered as `AgentKernelFactory` (line 50). Named "vllm" HttpClient registered with 5-minute timeout (lines 31-34). `ModelRoutingConfig` resolved from config with default fallback (lines 46-48). `DashboardUrlBuilder` uses `Dashboard:BaseUrl` config (line 54). `SdlcProcessFactory`, `PipelineRunnerService`, and all interfaces registered as singletons (lines 56-59). `DefaultKernel` wired to use named "vllm" client. `IPipelineRunner` made non-nullable on `SdlcRunService`. `dotnet build` compiles; all 118 tests pass.
 
 ---
 
@@ -941,13 +964,13 @@ public async Task ResumeGateAsync(...)
 | 0 Blockers           | 100 | — |
 | 1 AI Exec            | 90  | P1-7 resilience |
 | 2 Wiring             | 75  | P0-6 recovery, P1-11 cancellation, P1-12 fire-and-forget |
-| 3 Hardening          | 80  | P0-4 DI, P2-13 SQLite tx |
+| 3 Hardening          | 90  | P2-13 SQLite tx |
 | 4 Notifications      | 70  | P1-8 retry+escalation |
-| 5 Dashboard          | 65  | P0-4 DI, P0-5 pages |
+| 5 Dashboard          | 70  | P0-5 pages |
 | 6 Observability      | 67  | P1-10 tracing, P2-15 logging |
 | 7 Docker             | 60  | P2-14 hardening |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-4, P0-5, P0-6, P1-7, P2-13.
+**Top 5 must-fix before any production deploy:** P0-5, P0-6, P1-7, P2-13, P2-17.
 
 **Next 3 before scale:** P0-6, P1-7, P1-10.

@@ -28,7 +28,11 @@ builder.Services.AddHttpClient<ISweAfClient>((sp, http) =>
         ?? throw new InvalidOperationException("SweAf:BaseUrl required"));
     http.Timeout = TimeSpan.FromMinutes(30);
 });
-builder.Services.AddSingleton<SDLC.Notifications.DashboardUrlBuilder>();
+builder.Services.AddHttpClient("vllm", (sp, http) =>
+{
+    http.Timeout = TimeSpan.FromMinutes(5);
+});
+
 builder.Services.AddSingleton<SDLC.Notifications.INotificationService>(sp =>
     new SDLC.Notifications.SlackNotificationService(
         sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
@@ -42,6 +46,8 @@ builder.Services.AddSingleton<IPipelineTelemetry, PipelineTelemetry>();
 var modelRouting = builder.Configuration.GetSection("ModelRouting").Get<ModelRoutingConfig>()
     ?? ModelRoutingConfig.Default;
 builder.Services.AddSingleton(modelRouting);
+
+builder.Services.AddSingleton<IKernelFactory, AgentKernelFactory>();
 
 var dashboardBaseUrl = builder.Configuration["Dashboard:BaseUrl"]
     ?? "http://localhost:8080";

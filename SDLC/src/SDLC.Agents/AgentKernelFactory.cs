@@ -40,7 +40,7 @@ public class DefaultKernel : IKernel
     public DefaultKernel(ModelEndpoint endpoint, IHttpClientFactory httpClientFactory)
     {
         _endpoint = endpoint;
-        _http = httpClientFactory.CreateClient();
+        _http = httpClientFactory.CreateClient("vllm");
         _http.BaseAddress = new Uri(endpoint.BaseUrl);
         if (!string.IsNullOrEmpty(endpoint.ApiKey))
             _http.DefaultRequestHeaders.Authorization =
