@@ -18,8 +18,10 @@ public class SdlcProcessFactory(
     IArtifactStore artifactStore,
     IStageGateStore gateStore,
     INotificationService notifications,
+    ISweAfClient sweAfClient,
     IPipelineTelemetry telemetry,
     PipelineRunnerService runner,
+    ILoggerFactory loggerFactory,
     ILogger<SdlcProcessFactory> logger) : ISdlcProcessFactory
 {
     public ProcessHandle StartAsync(SdlcRunConfig config)
@@ -57,12 +59,16 @@ public class SdlcProcessFactory(
             // Gate: Design -> Build
             await WaitForGateWithApprovalAsync(architecture, ct);
 
-            // Stage 4: Build - placeholder (needs ISweAfClient)
-            throw new NotImplementedException("Wire ISweAfClient into SdlcProcessFactory");
+            // Stage 4: Build
+            var buildContext = new CapturingContext();
+            await new BuildStep().RunAsync(
+                buildContext, architecture, latestSpec, sweAfClient, artifactStore, telemetry, loggerFactory.CreateLogger<BuildStep>(), ct);
+            var buildResult = (BuildResult)buildContext.LastEvent!.Data!;
 
-            // Stage 5: Learn - placeholder
-            // var learnContext = new CapturingContext();
-            // await new LearnStep().RunAsync(learnContext, config, latestSpec, buildResult, kernelFactory, artifactStore, ct);
+            // Stage 5: Learn
+            var learnContext = new CapturingContext();
+            await new LearnStep().RunAsync(
+                learnContext, config, latestSpec, buildResult, kernelFactory, artifactStore, telemetry, ct);
         }
         catch (Exception ex)
         {

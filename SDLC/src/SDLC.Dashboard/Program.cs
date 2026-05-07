@@ -1,3 +1,4 @@
+using SDLC.Agents;
 using SDLC.Dashboard.Components;
 using SDLC.Telemetry;
 
@@ -18,6 +19,12 @@ builder.Services.AddSingleton<SDLC.Infrastructure.IStageGateStore>(
 
 // HTTP client and notification service
 builder.Services.AddHttpClient();
+builder.Services.AddHttpClient<ISweAfClient>((sp, http) =>
+{
+    http.BaseAddress = new Uri(builder.Configuration["SweAf:BaseUrl"]
+        ?? throw new InvalidOperationException("SweAf:BaseUrl required"));
+    http.Timeout = TimeSpan.FromMinutes(30);
+});
 builder.Services.AddSingleton<SDLC.Notifications.DashboardUrlBuilder>();
 builder.Services.AddSingleton<SDLC.Notifications.INotificationService>(sp =>
     new SDLC.Notifications.SlackNotificationService(
