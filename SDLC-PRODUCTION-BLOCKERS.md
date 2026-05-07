@@ -251,77 +251,33 @@ public async Task RecoverPendingGatesAsync()
 
 ## P1 — High Risk
 
-### P1-7. vLLM HTTP client lacks resilience
+### P1-7. Inference HTTP client lacks resilience
 
 **File:** `SDLC/src/SDLC.Agents/AgentKernelFactory.cs`
 
 **Problems:**
-- No `HttpClient.Timeout` → infinite hang on vLLM stall
+- No `HttpClient.Timeout` → infinite hang on inference stall
 - No retries / exponential backoff
 - `EnsureSuccessStatusCode()` bare throw, no 429 handling
 - `JsonDocument.Parse` blows on malformed/truncated JSON
-- `max_tokens = 4096` hardcoded (TODO at line 52)
+- `max_tokens = 4096` hardcoded
+- `"vllm"` named client — couldn't target arbitrary inference servers (vLLM, OpenRouter, cloud)
 
 **Mitigation:**
 
-1. Add `Microsoft.Extensions.Http.Polly` package to `SDLC.Agents.csproj`. Register typed/named client in `Program.cs`:
+1. New `IResilientHttpClientFactory` + `ResilienceHandler` (DelegatingHandler + Polly). Creates per-stage clients with retry (2^n + jitter) and timeout baked in.
 
-```csharp
-builder.Services.AddHttpClient("vllm", (sp, http) =>
-{
-    var routing = sp.GetRequiredService<ModelRoutingConfig>();
-    http.Timeout = TimeSpan.FromMinutes(5);
-})
-.AddTransientHttpErrorPolicy(p => p.WaitAndRetryAsync(
-    retryCount: 4,
-    sleepDurationProvider: i => TimeSpan.FromSeconds(Math.Pow(2, i))
-        + TimeSpan.FromMilliseconds(Random.Shared.Next(0, 250))))
-.AddPolicyHandler(Policy.TimeoutAsync<HttpResponseMessage>(TimeSpan.FromMinutes(2)));
-```
+2. `DefaultKernel` uses `IResilientHttpClientFactory.CreateForStage(stage)` instead of raw `HttpClient` or named client.
 
-2. Have `DefaultKernel` consume `IHttpClientFactory.CreateClient("vllm")`.
+3. Response parsing validates JSON structure: checks `choices/message/content` exist, catches `JsonException`.
 
-3. Wrap response parsing:
+4. HTTP error classification: 429 → `KernelException("rate limited")`, 5xx → classifies via retry.
 
-```csharp
-try
-{
-    using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
-    if (!doc.RootElement.TryGetProperty("choices", out var choices)
-        || choices.GetArrayLength() == 0
-        || !choices[0].TryGetProperty("message", out var msg)
-        || !msg.TryGetProperty("content", out var content))
-    {
-        throw new KernelException("vLLM response missing choices/message/content");
-    }
-    return content.GetString() ?? "";
-}
-catch (JsonException ex)
-{
-    _logger.LogError(ex, "vLLM returned non-JSON response for model {Model}", _endpoint.ModelId);
-    throw new KernelException("Malformed vLLM response", ex);
-}
-```
+5. `ModelEndpoint` extended with `MaxTokens?` and `Timeout?` params. Endpoint records carry their own knobs. No hardcoded server identity.
 
-4. Add `MaxTokens` to `ModelEndpoint` record. Read in `CompleteAsync`:
+**Done when:** Inference returning 429 → retried with backoff. Inference returning truncated JSON → logged, stage fails cleanly. Hung call → kernel cancels at configured timeout. Arbitrary endpoints supported via `ModelEndpoint.BaseUrl`.
 
-```csharp
-var request = new
-{
-    model = _endpoint.ModelId,
-    messages = new[] { ... },
-    temperature = _endpoint.Temperature ?? 0.7,
-    max_tokens = _endpoint.MaxTokens ?? 4096
-};
-```
-
-5. Distinguish 429 (back off longer) from 5xx (retry) from 4xx (fail fast). Polly retry policy already classifies 5xx + 408. Add 429 explicitly:
-
-```csharp
-.OrResult(r => r.StatusCode == HttpStatusCode.TooManyRequests)
-```
-
-**Done when:** vLLM returning 429 → retried with backoff. vLLM returning truncated JSON → logged, stage fails cleanly. Hung vLLM → kernel call cancels at 5min.
+**Resolved:** `IResilientHttpClientFactory` and `ResilienceHandler` created in `SDLC.Agents`. `DefaultKernel` refactored to use factory. `KernelException` added. `ModelEndpoint` extended with `MaxTokens?` and `Timeout?`. Per-stage retry/backoff: Research/Requirements (3x1s), Design (2x1.5s), Build (4x2s), Learn (3x1s). `Polly.Extensions.Http` added to `SDLC.Agents.csproj`. Old `"vllm"` named client removed from `Program.cs`. 6 new tests in `DefaultKernelTests.cs` (valid response, missing choices, malformed JSON, max_tokens override, 429 handling, empty content). All 125 tests across 7 test projects pass.
 
 ---
 
@@ -964,7 +920,7 @@ public async Task ResumeGateAsync(...)
 | Phase | Done % | Open Items |
 |-------|-------|------------|
 | 0 Blockers           | 100 | — |
-| 1 AI Exec            | 90  | P1-7 resilience |
+| 1 AI Exec            | 95  | P1-9 prompt injection |
 | 2 Wiring             | 75  | P0-6 recovery, P1-11 cancellation, P1-12 fire-and-forget |
 | 3 Hardening          | 90  | P2-13 SQLite tx |
 | 4 Notifications      | 70  | P1-8 retry+escalation |
@@ -973,6 +929,6 @@ public async Task ResumeGateAsync(...)
 | 7 Docker             | 60  | P2-14 hardening |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-6, P1-7, P2-13, P2-17.
+**Top 5 must-fix before any production deploy:** P0-6, P1-8, P1-9, P2-13, P2-17.
 
-**Next 3 before scale:** P0-6, P1-7, P1-10.
+**Next 3 before scale:** P1-8, P1-9, P1-10.

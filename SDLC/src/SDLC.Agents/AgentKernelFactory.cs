@@ -1,5 +1,7 @@
-using Microsoft.Extensions.Http;
+using Microsoft.Extensions.Logging;
 using SDLC.Contracts;
+using System.Net;
+using System.Text;
 using System.Text.Json;
 
 namespace SDLC.Agents;
@@ -9,70 +11,88 @@ public interface IKernel
     Task<string> CompleteAsync(string systemPrompt, string userMessage, CancellationToken ct = default);
 }
 
+public class KernelException : Exception
+{
+    public KernelException(string message) : base(message) { }
+    public KernelException(string message, Exception inner) : base(message, inner) { }
+}
+
 public class AgentKernelFactory(
-    ModelRoutingConfig routing, 
-    IHttpClientFactory? httpClientFactory)
+    ModelRoutingConfig routing,
+    IResilientHttpClientFactory resilientFactory)
     : IKernelFactory
 {
-    public AgentKernelFactory(ModelRoutingConfig routing)
-        : this(routing, httpClientFactory: null) { }
-
-    public IKernel CreateForStage(SdlcStage stage) =>
-        httpClientFactory is not null
-            ? new DefaultKernel(routing.GetEndpoint(stage), httpClientFactory)
-            : new DefaultKernel(routing.GetEndpoint(stage));
+    public IKernel CreateForStage(SdlcStage stage)
+    {
+        var endpoint = routing.GetEndpoint(stage);
+        return new DefaultKernel(endpoint, resilientFactory, stage);
+    }
 }
 
 public class DefaultKernel : IKernel
 {
     private readonly ModelEndpoint _endpoint;
     private readonly HttpClient _http;
+    private readonly ILogger<DefaultKernel>? _logger;
 
-    public DefaultKernel(ModelEndpoint endpoint)
+    public DefaultKernel(ModelEndpoint endpoint, IResilientHttpClientFactory factory, SdlcStage stage)
     {
         _endpoint = endpoint;
-        _http = new HttpClient { BaseAddress = new Uri(endpoint.BaseUrl) };
-        if (!string.IsNullOrEmpty(endpoint.ApiKey))
-            _http.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", endpoint.ApiKey);
-    }
-
-    public DefaultKernel(ModelEndpoint endpoint, IHttpClientFactory httpClientFactory)
-    {
-        _endpoint = endpoint;
-        _http = httpClientFactory.CreateClient("vllm");
-        _http.BaseAddress = new Uri(endpoint.BaseUrl);
-        if (!string.IsNullOrEmpty(endpoint.ApiKey))
-            _http.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", endpoint.ApiKey);
+        _http = factory.CreateForStage(stage);
+        _logger = null;
     }
 
     public async Task<string> CompleteAsync(string systemPrompt, string userMessage, CancellationToken ct = default)
     {
-        // TODO: make these parameters configurable
         var request = new
         {
             model = _endpoint.ModelId,
             messages = new[]
             {
                 new { role = "system", content = systemPrompt },
-                new { role = "user",   content = userMessage  }
+                new { role = "user",   content = userMessage }
             },
             temperature = 0.7,
-            max_tokens = 4096
+            max_tokens = _endpoint.MaxTokens ?? 4096
         };
 
         var body = JsonSerializer.Serialize(request);
-        var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
-        var response = await _http.PostAsync("/v1/chat/completions", content, ct);
-        response.EnsureSuccessStatusCode();
+        var content = new StringContent(body, Encoding.UTF8, "application/json");
 
-        using var doc = await System.Text.Json.JsonDocument.ParseAsync(
-            await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
-        return doc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString() ?? "";
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions") { Content = content };
+        var response = await _http.SendAsync(httpRequest, HttpCompletionOption.ResponseContentRead, ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger?.LogWarning("vLLM returned {Status} for model {Model}", response.StatusCode, _endpoint.ModelId);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                throw new KernelException($"vLLM rate limited ({response.StatusCode})");
+            throw new KernelException($"vLLM error: {response.StatusCode} {response.ReasonPhrase}");
+        }
+
+        string contentStr;
+        try
+        {
+            using var doc = await JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+
+            if (!doc.RootElement.TryGetProperty("choices", out var choices)
+                || choices.GetArrayLength() == 0
+                || !choices[0].TryGetProperty("message", out var msg)
+                || !msg.TryGetProperty("content", out var textProp))
+            {
+                _logger?.LogError("vLLM response missing choices/message/content for model {Model}", _endpoint.ModelId);
+                throw new KernelException("vLLM response missing choices/message/content");
+            }
+
+            contentStr = textProp.GetString() ?? "";
+        }
+        catch (JsonException ex)
+        {
+            _logger?.LogError(ex, "vLLM returned non-JSON response for model {Model}", _endpoint.ModelId);
+            throw new KernelException("Malformed vLLM response", ex);
+        }
+
+        return contentStr;
     }
 }
