@@ -373,6 +373,10 @@ private static string Sanitize(string input)
 
 **Done when:** Test injecting a closing tag does not change the outer prompt structure.
 
+**Resolved:** `PromptSanitizer` helper class added to `StagesPrompts.cs` with `Sanitize()` method that neutralizes closing tags and enforces caps. All four `BuildPrompt` methods wrap content in XML fence tags. All four `SystemPrompt` values include injection warning. 18 new tests added covering tag stripping, truncation, and fence wrapping. All 137 tests across 7 test projects pass.
+
+---
+
 ---
 
 ### P1-10. No distributed tracing — only metrics
@@ -920,7 +924,7 @@ public async Task ResumeGateAsync(...)
 | Phase | Done % | Open Items |
 |-------|-------|------------|
 | 0 Blockers           | 100 | — |
-| 1 AI Exec            | 95  | P1-9 prompt injection |
+| 1 AI Exec            | 100 | — |
 | 2 Wiring             | 75  | P0-6 recovery, P1-11 cancellation, P1-12 fire-and-forget |
 | 3 Hardening          | 90  | P2-13 SQLite tx |
 | 4 Notifications      | 70  | P1-8 retry+escalation |
