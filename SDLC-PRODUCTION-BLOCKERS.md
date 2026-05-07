@@ -2,72 +2,33 @@
 
 Audit of `SDLC-PRODUCTION-ROADMAP.md` implementation vs current repo state. Blockers grouped by severity. Each item has file path, problem, mitigation.
 
-Roadmap completion: ~80%. Phases 0, 1, 8 essentially done. Phases 2, 3, 5, 6, 7 have gaps. Critical correctness + security holes remain in Phases 2 and 5.
+Roadmap completion: ~82%. Phases 0, 1, 8 done. P0-1 resolved. Phases 2, 3, 5, 6, 7 have gaps. Critical correctness + security holes remain in Phases 2 and 5.
 
 ---
 
 ## P0 — Ship-Stoppers
 
-### P0-1. Build + Learn stages not wired in pipeline factory
+~~### P0-1. Build + Learn stages not wired in pipeline factory~~
 
-**File:** `SDLC/src/SDLC.Orchestrator/SdlcProcessFactory.cs:61`
+~~**File:** `SDLC/src/SDLC.Orchestrator/SdlcProcessFactory.cs:61`~~
 
-**Problem:** Pipeline halts after Design gate. `RunPipelineAsync` throws `NotImplementedException("Wire ISweAfClient into SdlcProcessFactory")`. Build + Learn commented out. Roadmap 2.1 not finished.
+~~**Problem:** Pipeline halts after Design gate. `RunPipelineAsync` throws `NotImplementedException("Wire ISweAfClient into SdlcProcessFactory")`. Build + Learn commented out. Roadmap 2.1 not finished.~~
 
-**Mitigation:**
+~~**Mitigation:**~~
 
-1. Add `ISweAfClient` to constructor:
+~~1. Add `ISweAfClient` to constructor and `ILoggerFactory` for BuildStep logging.~~
 
-```csharp
-public SdlcProcessFactory(
-    IKernelFactory kernelFactory,
-    IArtifactStore artifactStore,
-    IStageGateStore gateStore,
-    INotificationService notifications,
-    ISweAfClient sweAfClient,
-    IPipelineTelemetry telemetry,
-    PipelineRunnerService runner,
-    ILogger<SdlcProcessFactory> logger)
-{
-    _kernelFactory = kernelFactory;
-    _artifactStore = artifactStore;
-    _gateStore = gateStore;
-    _notifications = notifications;
-    _sweAfClient = sweAfClient;
-    _telemetry = telemetry;
-    _runner = runner;
-    _logger = logger;
-}
-```
+~~2. Replace `throw new NotImplementedException(...)` with actual `BuildStep.RunAsync()` + `LearnStep.RunAsync()` calls.~~
 
-2. Replace the `throw new NotImplementedException(...)` block with:
+~~3. Create `SweAfClient` implementation in `SDLC.Agents/SweAfClient.cs`.~~
 
-```csharp
-// Stage 4: Build
-var latestArch = await _artifactStore.GetLatestForRunAsync<ArchitectureRecord>(config.RunId) ?? architecture;
-var buildContext = new CapturingContext();
-await new BuildStep().RunAsync(
-    buildContext, latestSpec, _sweAfClient, _artifactStore, _telemetry, ct);
-var buildResult = (BuildResult)buildContext.LastEvent!.Data!;
+~~4. Register `ISweAfClient` via `AddHttpClient<ISweAfClient>()` in `Program.cs` with `SweAf:BaseUrl` config.~~
 
-// Stage 5: Learn
-var learnContext = new CapturingContext();
-await new LearnStep().RunAsync(
-    learnContext, config, latestSpec, buildResult, _kernelFactory, _artifactStore, _telemetry, ct);
-```
-
-3. Register `ISweAfClient` in `Program.cs`:
-
-```csharp
-builder.Services.AddHttpClient<ISweAfClient, SweAfClient>((sp, http) =>
-{
-    http.BaseAddress = new Uri(builder.Configuration["SweAf:BaseUrl"]
-        ?? throw new InvalidOperationException("SweAf:BaseUrl required"));
-    http.Timeout = TimeSpan.FromMinutes(30);
-});
-```
+~~5. Add `SDLC.Agents` project reference to Dashboard csproj and `using SDLC.Agents;` to Program.cs.~~
 
 **Done when:** Integration test runs full Research → Requirements → Design → Build → Learn end-to-end.
+
+**Resolved:** All changes committed. Pipeline compiles; wired Build → Learn stages with `ISweAfClient` DI registration.
 
 ---
 
@@ -1022,7 +983,7 @@ public async Task ResumeGateAsync(...)
 |-------|-------|------------|
 | 0 Blockers           | 100 | — |
 | 1 AI Exec            | 90  | P1-7 resilience |
-| 2 Wiring             | 60  | P0-1 build/learn, P0-2 reject, P0-6 recovery, P1-11 cancellation, P1-12 fire-and-forget |
+| 2 Wiring             | 65  | P0-2 reject, P0-6 recovery, P1-11 cancellation, P1-12 fire-and-forget |
 | 3 Hardening          | 80  | P0-4 DI, P2-13 SQLite tx |
 | 4 Notifications      | 70  | P1-8 retry+escalation |
 | 5 Dashboard          | 40  | P0-3 auth+audit, P0-4 DI, P0-5 pages |
@@ -1030,6 +991,6 @@ public async Task ResumeGateAsync(...)
 | 7 Docker             | 60  | P2-14 hardening |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-1, P0-2, P0-3, P0-4, P0-5.
+**Top 5 must-fix before any production deploy:** P0-2, P0-3, P0-4, P0-5, P0-6.
 
 **Next 3 before scale:** P0-6, P1-7, P1-10.
