@@ -46,13 +46,14 @@ public class PipelineRunnerService(
     : IPipelineRunner
 {
     private readonly ConcurrentDictionary<Guid, object> _activeRuns = new();
+    private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _runCancellation = new();
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<GateResolution>> _pendingGates = new();
 
     public int ActiveRunCount => _activeRuns.Count;
 
     public virtual bool IsRunActive(Guid runId) => _activeRuns.ContainsKey(runId);
 
-    public Task<GateResolution> WaitForGateAsync(Guid gateId, CancellationToken ct)
+    public virtual Task<GateResolution> WaitForGateAsync(Guid gateId, CancellationToken ct)
     {
         var tcs = new TaskCompletionSource<GateResolution>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pendingGates[gateId] = tcs;
@@ -70,10 +71,15 @@ public class PipelineRunnerService(
         logger.LogInformation("Starting SDLC run {RunId}", config.RunId);
         await telemetry.StartPipelineRunAsync(config.RunId, config.ProjectBrief, ct);
 
-        var handle = processFactory.StartAsync(config);
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _runCancellation[config.RunId] = cts;
+
+        var handle = processFactory.StartAsync(config, cts.Token);
         _ = handle.Task.ContinueWith(async t =>
         {
             _activeRuns.TryRemove(config.RunId, out _);
+            _runCancellation.TryRemove(config.RunId, out _);
+            cts.Dispose();
             await telemetry.CompletePipelineRunAsync(config.RunId, ct);
             if (t.IsFaulted)
                 logger.LogError(t.Exception, "Run {RunId} failed", config.RunId);
@@ -134,10 +140,15 @@ public class PipelineRunnerService(
     private async Task ResumeRunAsync(RunCheckpoint run)
     {
         var config = new SdlcRunConfig { RunId = run.RunId, ProjectBrief = "" };
-        var handle = processFactory.ResumeAsync(config, run.CurrentStage);
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken.None);
+        _runCancellation[run.RunId] = cts;
+
+        var handle = processFactory.ResumeAsync(config, run.CurrentStage, cts.Token);
         _ = handle.Task.ContinueWith(async t =>
         {
             _activeRuns.TryRemove(run.RunId, out _);
+            _runCancellation.TryRemove(run.RunId, out _);
+            cts.Dispose();
             await telemetry.CompletePipelineRunAsync(run.RunId, default);
             if (t.IsFaulted)
                 logger.LogError(t.Exception, "Recovery run {RunId} failed", run.RunId);
@@ -148,4 +159,16 @@ public class PipelineRunnerService(
 
     public IReadOnlyCollection<Guid> GetAllActiveRunIds()
         => _activeRuns.Keys.ToList().AsReadOnly();
+
+    public async Task CancelRunAsync(Guid runId, CancellationToken ct = default)
+    {
+        if (!_activeRuns.ContainsKey(runId))
+            throw new InvalidOperationException($"No active run for {runId}");
+
+        if (_runCancellation.TryRemove(runId, out var cts))
+        {
+            cts.Cancel();
+            cts.Dispose();
+        }
+    }
 }

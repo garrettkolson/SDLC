@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -30,7 +31,7 @@ public class PipelineRunnerServiceGateSuspendTests
         var config = new SdlcRunConfig { RunId = runId, ProjectBrief = "Test" };
 
         // Enqueue to establish active run (required by ResumeGateAsync)
-        factory.StartAsync(config).Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
+        factory.StartAsync(Arg.Any<SdlcRunConfig>(), Arg.Any<CancellationToken>()).Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         await runner.EnqueueAsync(config);
 
         var waitTask = runner.WaitForGateAsync(gateId, CancellationToken.None);
@@ -55,7 +56,7 @@ public class PipelineRunnerServiceGateSuspendTests
         var gateId = Guid.NewGuid();
         var config = new SdlcRunConfig { RunId = runId, ProjectBrief = "Test" };
 
-        factory.StartAsync(config).Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
+        factory.StartAsync(Arg.Any<SdlcRunConfig>(), Arg.Any<CancellationToken>()).Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         await runner.EnqueueAsync(config);
 
         var waitTask = runner.WaitForGateAsync(gateId, CancellationToken.None);

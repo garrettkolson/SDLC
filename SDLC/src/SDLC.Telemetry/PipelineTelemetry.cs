@@ -38,6 +38,7 @@ public interface IPipelineTelemetry
     Task RecordGateRejectedAsync(Guid gateId, string? userId = null, CancellationToken ct = default);
     Task StartPipelineRunAsync(Guid runId, string projectBrief, CancellationToken ct = default);
     Task CompletePipelineRunAsync(Guid runId, CancellationToken ct = default);
+    Task RecordRunCancelledAsync(Guid runId, CancellationToken ct = default);
 
     Task<IReadOnlyList<StepEvent>> GetStepEventsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<GateEvent>> GetGateEventsAsync(CancellationToken ct = default);
@@ -101,6 +102,12 @@ public class PipelineTelemetry : IPipelineTelemetry
     public async Task CompletePipelineRunAsync(Guid runId, CancellationToken ct = default)
     {
         SdlcTelemetry.RunsCompleted.Add(1);
+        _pipelineEvents.Enqueue(new PipelineEvent(runId, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+    }
+
+    public async Task RecordRunCancelledAsync(Guid runId, CancellationToken ct = default)
+    {
+        SdlcTelemetry.RunsCancelled.Add(1);
         _pipelineEvents.Enqueue(new PipelineEvent(runId, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
     }
 

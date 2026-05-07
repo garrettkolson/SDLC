@@ -81,6 +81,7 @@ builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService>(sp =>
     new SDLC.Dashboard.Services.SdlcRunService(
         sp.GetRequiredService<SDLC.Infrastructure.IArtifactStore>(),
         sp.GetRequiredService<SDLC.Infrastructure.IStageGateStore>(),
+        sp.GetRequiredService<SDLC.Infrastructure.IRunStore>(),
         sp.GetRequiredService<IPipelineTelemetry>(),
         sp.GetRequiredService<IPipelineRunner>()));
 

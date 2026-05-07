@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -19,10 +20,11 @@ public class PipelineRunnerServiceTests
     public async Task EnqueueAsync_AddsRunToActiveRuns()
     {
         var processFactory = Substitute.For<ISdlcProcessFactory>();
-        processFactory.StartAsync(Arg.Any<SdlcRunConfig>())
+        processFactory.StartAsync(Arg.Any<SdlcRunConfig>(), Arg.Any<CancellationToken>())
             .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
+        telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
         var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
         var config = new SdlcRunConfig { ProjectBrief = "Test project" };
 
@@ -35,10 +37,11 @@ public class PipelineRunnerServiceTests
     public async Task EnqueueAsync_MultipleRuns_AllTracked()
     {
         var processFactory = Substitute.For<ISdlcProcessFactory>();
-        processFactory.StartAsync(Arg.Any<SdlcRunConfig>())
+        processFactory.StartAsync(Arg.Any<SdlcRunConfig>(), Arg.Any<CancellationToken>())
             .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
+        telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
         var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
         await runner.EnqueueAsync(new SdlcRunConfig { ProjectBrief = "Project A" });
         await runner.EnqueueAsync(new SdlcRunConfig { ProjectBrief = "Project B" });
@@ -51,10 +54,11 @@ public class PipelineRunnerServiceTests
     public async Task IsRunActive_ForEnqueuedRun_ReturnsTrue()
     {
         var processFactory = Substitute.For<ISdlcProcessFactory>();
-        processFactory.StartAsync(Arg.Any<SdlcRunConfig>())
+        processFactory.StartAsync(Arg.Any<SdlcRunConfig>(), Arg.Any<CancellationToken>())
             .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
+        telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
         var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
         var config = new SdlcRunConfig { ProjectBrief = "Test" };
 
@@ -69,6 +73,7 @@ public class PipelineRunnerServiceTests
         var processFactory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
+        telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
         var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
         runner.IsRunActive(Guid.NewGuid()).Should().BeFalse();
     }
@@ -89,10 +94,11 @@ public class PipelineRunnerServiceTests
     public async Task EnqueueAsync_SameRunIdTwice_ThrowsInvalidOperationException()
     {
         var processFactory = Substitute.For<ISdlcProcessFactory>();
-        processFactory.StartAsync(Arg.Any<SdlcRunConfig>())
+        processFactory.StartAsync(Arg.Any<SdlcRunConfig>(), Arg.Any<CancellationToken>())
             .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
+        telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
         var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
         var runId = Guid.NewGuid();
         var config1 = new SdlcRunConfig { RunId = runId, ProjectBrief = "Test" };
@@ -100,6 +106,81 @@ public class PipelineRunnerServiceTests
 
         var config2 = new SdlcRunConfig { RunId = runId, ProjectBrief = "Test" };
         var act = () => runner.EnqueueAsync(config2);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task CancelRunAsync_UnknownRunId_ThrowsInvalidOperationException()
+    {
+        var processFactory = Substitute.For<ISdlcProcessFactory>();
+        var logger = Substitute.For<ILogger<PipelineRunnerService>>();
+        var telemetry = Substitute.For<IPipelineTelemetry>();
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var act = () => runner.CancelRunAsync(Guid.NewGuid());
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task CancelRunAsync_ForActiveRun_ReturnsWithoutThrowing()
+    {
+        var processFactory = Substitute.For<ISdlcProcessFactory>();
+        var tcs = new TaskCompletionSource<Task>();
+        processFactory.StartAsync(Arg.Any<SdlcRunConfig>(), Arg.Any<CancellationToken>())
+            .Returns(new ProcessHandle(tcs.Task));
+        var logger = Substitute.For<ILogger<PipelineRunnerService>>();
+        var telemetry = Substitute.For<IPipelineTelemetry>();
+        telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runId = Guid.NewGuid();
+        var config = new SdlcRunConfig { RunId = runId, ProjectBrief = "Test" };
+
+        await runner.EnqueueAsync(config);
+        runner.IsRunActive(runId).Should().BeTrue();
+
+        await runner.CancelRunAsync(runId);
+
+        runner.IsRunActive(runId).Should().BeTrue(); // _activeRuns not cleaned up by CancelRunAsync
+    }
+
+    [Test]
+    public async Task CancelRunAsync_RemovesFromRunCancellation()
+    {
+        var processFactory = Substitute.For<ISdlcProcessFactory>();
+        processFactory.StartAsync(Arg.Any<SdlcRunConfig>(), Arg.Any<CancellationToken>())
+            .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
+        var logger = Substitute.For<ILogger<PipelineRunnerService>>();
+        var telemetry = Substitute.For<IPipelineTelemetry>();
+        telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runId = Guid.NewGuid();
+        var config = new SdlcRunConfig { RunId = runId, ProjectBrief = "Test" };
+
+        await runner.EnqueueAsync(config);
+
+        var field = typeof(PipelineRunnerService).GetField("_runCancellation", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var dict = (System.Collections.Concurrent.ConcurrentDictionary<Guid, System.Threading.CancellationTokenSource>)field!.GetValue(runner)!;
+        dict.ContainsKey(runId).Should().BeTrue();
+
+        await runner.CancelRunAsync(runId);
+
+        dict.ContainsKey(runId).Should().BeFalse();
+    }
+
+    [Test]
+    public async Task EnqueueAsync_Throws_WhenProcessFactoryStartAsync_Throws()
+    {
+        var processFactory = Substitute.For<ISdlcProcessFactory>();
+        processFactory.StartAsync(Arg.Any<SdlcRunConfig>(), Arg.Any<CancellationToken>())
+            .Returns(x => { throw new InvalidOperationException("factory fail"); });
+        var logger = Substitute.For<ILogger<PipelineRunnerService>>();
+        var telemetry = Substitute.For<IPipelineTelemetry>();
+        telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var config = new SdlcRunConfig { ProjectBrief = "Test" };
+
+        var act = () => runner.EnqueueAsync(config);
 
         await act.Should().ThrowAsync<InvalidOperationException>();
     }

@@ -28,6 +28,7 @@ public interface IRunStore
     Task UpdateStageAsync(Guid runId, string stage, string status);
     Task<RunCheckpoint?> GetRunAsync(Guid runId);
     Task<List<RunCheckpoint>> GetAllIncompleteAsync();
+    Task CancelRunAsync(Guid runId);
 }
 
 public record RunCheckpoint(Guid RunId, string CurrentStage, string Status, DateTimeOffset StartedAt);

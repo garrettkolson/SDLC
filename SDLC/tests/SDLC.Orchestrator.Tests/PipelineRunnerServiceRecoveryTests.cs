@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -28,9 +29,9 @@ public class PipelineRunnerServiceRecoveryTests
     {
         var stub = Substitute.For<ISdlcProcessFactory>();
         var pending = new TaskCompletionSource<bool>();
-        stub.StartAsync(Arg.Any<SdlcRunConfig>())
+        stub.StartAsync(Arg.Any<SdlcRunConfig>(), Arg.Any<CancellationToken>())
             .Returns(new ProcessHandle(pending.Task));
-        stub.ResumeAsync(Arg.Any<SdlcRunConfig>(), Arg.Any<string>())
+        stub.ResumeAsync(Arg.Any<SdlcRunConfig>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new ProcessHandle(pending.Task));
         return stub;
     }
@@ -106,6 +107,7 @@ public class PipelineRunnerServiceRecoveryTests
         var factory = CreateFactoryStub();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
+        telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
         var runner = new PipelineRunnerService(factory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
 
         var runId = Guid.NewGuid();

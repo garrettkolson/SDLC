@@ -24,6 +24,7 @@ public interface ISdlcRunService
     Task ApproveGateAsync(Guid gateId, string approverUserId, string approverDisplayName, string? notes, CancellationToken ct = default);
     Task RejectGateAsync(Guid gateId, string approverUserId, string approverDisplayName, string notes, CancellationToken ct = default);
     Task<Guid> StartRunAsync(SdlcRunConfig config, CancellationToken ct = default);
+    Task CancelRunAsync(Guid runId, CancellationToken ct = default);
     Task<GateSummary?> GetGateDetailAsync(Guid gateId, CancellationToken ct = default);
 }
 
@@ -44,6 +45,7 @@ public record ArtifactSummary(
 public class SdlcRunService(
     IArtifactStore artifactStore,
     IStageGateStore gateStore,
+    IRunStore runStore,
     IPipelineTelemetry telemetry,
     IPipelineRunner runner)
     : ISdlcRunService
@@ -134,6 +136,17 @@ public class SdlcRunService(
         await telemetry.StartPipelineRunAsync(config.RunId, config.ProjectBrief, ct);
         await runner.EnqueueAsync(config, ct);
         return config.RunId;
+    }
+
+    public async Task CancelRunAsync(Guid runId, CancellationToken ct = default)
+    {
+        if (!runner.IsRunActive(runId))
+            throw new InvalidOperationException($"No active run for {runId}");
+
+        await runStore.CancelRunAsync(runId);
+        await telemetry.RecordRunCancelledAsync(runId, ct);
+
+        Task.Run(() => runner.CancelRunAsync(runId, ct));
     }
 
     public async Task<GateSummary?> GetGateDetailAsync(Guid gateId, CancellationToken ct = default)

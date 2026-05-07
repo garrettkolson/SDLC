@@ -5,8 +5,8 @@ namespace SDLC.Orchestrator;
 
 public interface ISdlcProcessFactory
 {
-    ProcessHandle StartAsync(SdlcRunConfig config);
-    ProcessHandle ResumeAsync(SdlcRunConfig config, string stage);
+    ProcessHandle StartAsync(SdlcRunConfig config, CancellationToken ct = default);
+    ProcessHandle ResumeAsync(SdlcRunConfig config, string stage, CancellationToken ct = default);
 }
 
 // Minimal SK Process abstraction for testability
@@ -34,4 +34,5 @@ public interface IPipelineRunner
     bool IsRunActive(Guid runId);
     Task EnqueueAsync(SdlcRunConfig config, CancellationToken ct = default);
     Task ResumeGateAsync(Guid runId, Guid gateId, GateDecision decision, string? notes, CancellationToken ct = default);
+    Task CancelRunAsync(Guid runId, CancellationToken ct = default);
 }

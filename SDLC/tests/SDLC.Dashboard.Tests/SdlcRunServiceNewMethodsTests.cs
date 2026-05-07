@@ -15,6 +15,7 @@ public class SdlcRunServiceNewMethodsTests
 {
     private TestArtifactStore _artifactStore = null!;
     private TestGateStore _gateStore = null!;
+    private TestRunStore _runStore = null!;
     private CapturingRunner _runner = null!;
     private IPipelineTelemetry telemetry = null!;
     private Guid _testRunId;
@@ -25,6 +26,7 @@ public class SdlcRunServiceNewMethodsTests
         _testRunId = Guid.NewGuid();
         _artifactStore = new TestArtifactStore();
         _gateStore = new TestGateStore();
+        _runStore = new TestRunStore();
         _runner = new CapturingRunner();
         telemetry = Substitute.For<IPipelineTelemetry>();
     }
@@ -33,7 +35,7 @@ public class SdlcRunServiceNewMethodsTests
     public async Task StartRunAsync_CallsPipelineRunner()
     {
         var config = new SdlcRunConfig { ProjectBrief = "test brief" };
-        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, _runner);
 
         var runId = await service.StartRunAsync(config);
 
@@ -46,7 +48,7 @@ public class SdlcRunServiceNewMethodsTests
     public async Task StartRunAsync_RecordsTelemetry()
     {
         var config = new SdlcRunConfig { ProjectBrief = "test brief" };
-        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, _runner);
 
         await service.StartRunAsync(config);
 
@@ -67,7 +69,7 @@ public class SdlcRunServiceNewMethodsTests
         };
         _gateStore.Gates[gateId] = gate;
 
-        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, _runner);
         var result = await service.GetGateDetailAsync(gateId);
 
         result.Should().NotBeNull();
@@ -80,7 +82,7 @@ public class SdlcRunServiceNewMethodsTests
     [Test]
     public async Task GetGateDetailAsync_ReturnsNull_WhenNotFound()
     {
-        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
+        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, _runner);
         var result = await service.GetGateDetailAsync(Guid.NewGuid());
         result.Should().BeNull();
     }
@@ -161,6 +163,37 @@ public class SdlcRunServiceNewMethodsTests
         public override Task ResumeGateAsync(Guid runId, Guid gateId, GateDecision decision, string? notes, CancellationToken ct = default)
         {
             _activeRuns.Remove(runId);
+            return Task.CompletedTask;
+        }
+    }
+
+    private class TestRunStore : IRunStore
+    {
+        private readonly ConcurrentDictionary<Guid, RunCheckpoint> _runs = new();
+
+        public Task CancelRunAsync(Guid runId) => Task.CompletedTask;
+
+        public Task CreateRunAsync(Guid runId, string projectBrief, string startedAt)
+        {
+            _runs[runId] = new RunCheckpoint(runId, "Research", "Running", DateTimeOffset.Parse(startedAt));
+            return Task.CompletedTask;
+        }
+
+        public Task<List<RunCheckpoint>> GetAllIncompleteAsync() =>
+            Task.FromResult(_runs.Values.ToList());
+
+        public Task<RunCheckpoint?> GetRunAsync(Guid runId) => Task.FromResult(_runs.GetValueOrDefault(runId));
+
+        public Task SaveAsync(SdlcArtifact artifact) => Task.CompletedTask;
+        public Task<T?> GetAsync<T>(Guid artifactId) where T : SdlcArtifact => Task.FromResult<T?>(null);
+        public Task<T?> GetLatestForRunAsync<T>(Guid runId) where T : SdlcArtifact => Task.FromResult<T?>(null);
+        public Task UpdateStatusAsync(Guid artifactId, ArtifactStatus status) => Task.CompletedTask;
+        public Task UpdateContentAsync(Guid artifactId, string content) => Task.CompletedTask;
+        public Task<List<SdlcArtifact>> GetAllForRunAsync(Guid runId) => Task.FromResult(new List<SdlcArtifact>());
+        public Task<List<Guid>> GetAllRunIdsAsync() => Task.FromResult(new List<Guid>());
+        public Task UpdateStageAsync(Guid runId, string stage, string status)
+        {
+            _runs[runId] = new RunCheckpoint(runId, stage, status, DateTimeOffset.UtcNow);
             return Task.CompletedTask;
         }
     }

@@ -79,4 +79,14 @@ public class RunStore : IRunStore
             r.status,
             DateTimeOffset.Parse(r.started_at))).ToList();
     }
+
+    public async Task CancelRunAsync(Guid runId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+        await conn.ExecuteAsync(@"
+            UPDATE runs SET status = 'Cancelled'
+            WHERE run_id = @runId",
+            new { runId = runId.ToString() });
+    }
 }

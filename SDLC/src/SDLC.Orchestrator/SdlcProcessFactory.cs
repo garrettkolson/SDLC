@@ -25,15 +25,15 @@ public class SdlcProcessFactory(
     ILoggerFactory loggerFactory,
     ILogger<SdlcProcessFactory> logger) : ISdlcProcessFactory
 {
-    public ProcessHandle StartAsync(SdlcRunConfig config)
+    public ProcessHandle StartAsync(SdlcRunConfig config, CancellationToken ct = default)
     {
-        var task = RunPipelineAsync(config, CancellationToken.None);
+        var task = RunPipelineAsync(config, ct);
         return new ProcessHandle(task);
     }
 
-    public ProcessHandle ResumeAsync(SdlcRunConfig config, string stage)
+    public ProcessHandle ResumeAsync(SdlcRunConfig config, string stage, CancellationToken ct = default)
     {
-        var task = ResumePipelineAsync(config, stage, CancellationToken.None);
+        var task = ResumePipelineAsync(config, stage, ct);
         return new ProcessHandle(task);
     }
 
