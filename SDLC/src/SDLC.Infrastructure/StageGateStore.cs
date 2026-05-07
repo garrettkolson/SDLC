@@ -23,6 +23,8 @@ public class StageGateStore : IStageGateStore
                 status TEXT NOT NULL DEFAULT 'Pending',
                 notes TEXT,
                 resolved_at TEXT,
+                resolved_by_user_id TEXT,
+                resolved_by_display TEXT,
                 artifact_content TEXT,
                 artifact_type TEXT,
                 created_at TEXT NOT NULL
@@ -62,7 +64,7 @@ public class StageGateStore : IStageGateStore
         await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         await conn.OpenAsync();
         await using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(@"
-            SELECT gate_id, run_id, stage, status, notes, resolved_at, artifact_content, artifact_type
+            SELECT gate_id, run_id, stage, status, notes, resolved_at, resolved_by_user_id, resolved_by_display, artifact_content, artifact_type
             FROM gates WHERE gate_id = @id", conn);
         cmd.Parameters.AddWithValue("@id", gateId.ToString());
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -71,7 +73,7 @@ public class StageGateStore : IStageGateStore
         return ReadGate(reader);
     }
 
-    public async Task ResolveAsync(Guid gateId, GateDecision decision, string? notes)
+    public async Task ResolveAsync(Guid gateId, GateDecision decision, string? notes, string resolvedById, string resolvedByDisplay)
     {
         var status = decision == GateDecision.Approved
             ? GateStatus.Approved.ToString()
@@ -80,11 +82,14 @@ public class StageGateStore : IStageGateStore
         await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         await conn.OpenAsync();
         await using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(@"
-            UPDATE gates SET status = @status, notes = @notes, resolved_at = @resolved_at
+            UPDATE gates SET status = @status, notes = @notes, resolved_at = @resolved_at,
+                resolved_by_user_id = @resolvedById, resolved_by_display = @resolvedByDisplay
             WHERE gate_id = @id", conn);
         cmd.Parameters.AddWithValue("@status", status);
         cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@resolved_at", DateTimeOffset.UtcNow.ToString("o"));
+        cmd.Parameters.AddWithValue("@resolvedById", (object?)resolvedById ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@resolvedByDisplay", (object?)resolvedByDisplay ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id", gateId.ToString());
         await cmd.ExecuteNonQueryAsync();
     }
@@ -94,7 +99,7 @@ public class StageGateStore : IStageGateStore
         await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         await conn.OpenAsync();
         await using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(@"
-            SELECT gate_id, run_id, stage, status, notes, resolved_at, artifact_content, artifact_type
+            SELECT gate_id, run_id, stage, status, notes, resolved_at, resolved_by_user_id, resolved_by_display, artifact_content, artifact_type
             FROM gates WHERE run_id = @run_id AND status = 'Pending'", conn);
         cmd.Parameters.AddWithValue("@run_id", runId.ToString());
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -118,6 +123,8 @@ public class StageGateStore : IStageGateStore
         };
 
         int resolvedIdx = reader.GetOrdinal("resolved_at");
+        int resolvedByIdIdx = reader.GetOrdinal("resolved_by_user_id");
+        int resolvedByDisplayIdx = reader.GetOrdinal("resolved_by_display");
 
         return new StageGate
         {
@@ -127,6 +134,8 @@ public class StageGateStore : IStageGateStore
             Status = (GateStatus)Enum.Parse(typeof(GateStatus), reader.GetString(reader.GetOrdinal("status"))),
             Notes = reader["notes"] as string,
             ResolvedAt = reader.IsDBNull(resolvedIdx) ? null : DateTimeOffset.Parse(reader.GetString(resolvedIdx)),
+            ResolvedById = reader.IsDBNull(resolvedByIdIdx) ? null : reader.GetString(resolvedByIdIdx),
+            ResolvedByDisplay = reader.IsDBNull(resolvedByDisplayIdx) ? null : reader.GetString(resolvedByDisplayIdx),
             Artifact = artifact
         };
     }

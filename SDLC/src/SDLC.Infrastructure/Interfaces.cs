@@ -17,7 +17,7 @@ public interface IStageGateStore
 {
     Task<StageGate> CreateGateAsync(SdlcArtifact artifact);
     Task<StageGate?> GetAsync(Guid gateId);
-    Task ResolveAsync(Guid gateId, GateDecision decision, string? notes);
+    Task ResolveAsync(Guid gateId, GateDecision decision, string? notes, string resolvedById, string resolvedByDisplay);
     Task<List<StageGate>> GetPendingForRunAsync(Guid runId);
 }
 
@@ -29,5 +29,7 @@ public class StageGate
     public GateStatus Status { get; set; } = GateStatus.Pending;
     public string? Notes { get; set; }
     public DateTimeOffset? ResolvedAt { get; set; }
+    public string? ResolvedById { get; set; }
+    public string? ResolvedByDisplay { get; set; }
     public SdlcArtifact? Artifact { get; set; }
 }

@@ -1,4 +1,9 @@
 @page "/run/{runId:guid}"
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize]
+@inject AuthenticationStateProvider AuthState
 @inject SDLC.Dashboard.Services.ISdlcRunService RunService
 
 <PageTitle>Run Detail — @detail?.RunId</PageTitle>
@@ -74,9 +79,14 @@ else
     private SDLC.Dashboard.Services.RunDetail? detail;
     private string? message;
     private string messageType = "info";
+    private string _userId = "anonymous";
+    private string _displayName = "anonymous";
 
     protected override async Task OnInitializedAsync()
     {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirstValue("sub") ?? auth.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous";
+        _displayName = auth.User.Identity?.Name ?? "anonymous";
         detail = await RunService.GetRunDetailAsync(runId);
     }
 
@@ -84,7 +94,7 @@ else
     {
         try
         {
-            await RunService.ApproveGateAsync(gateId, "Approved from dashboard");
+            await RunService.ApproveGateAsync(gateId, _userId, _displayName, "Approved from dashboard");
             message = "Gate approved";
             messageType = "success";
             detail = await RunService.GetRunDetailAsync(runId);
@@ -100,7 +110,7 @@ else
     {
         try
         {
-            await RunService.RejectGateAsync(gateId, "Rejected from dashboard");
+            await RunService.RejectGateAsync(gateId, _userId, _displayName, "Rejected from dashboard");
             message = "Gate rejected";
             messageType = "info";
             detail = await RunService.GetRunDetailAsync(runId);

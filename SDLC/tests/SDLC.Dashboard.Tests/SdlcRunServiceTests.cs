@@ -156,10 +156,12 @@ public class SdlcRunServiceTests
         _gateStore.Gates[gateId] = gate;
 
         var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
-        await service.ApproveGateAsync(gateId);
+        await service.ApproveGateAsync(gateId, "user-123", "Test User", null);
 
         gate.Status.Should().Be(GateStatus.Approved);
         gate.Notes.Should().BeNull();
+        gate.ResolvedById.Should().Be("user-123");
+        gate.ResolvedByDisplay.Should().Be("Test User");
         await WaitForRunnerAsync();
         _runner.ResumedGate.Should().Be(gateId);
     }
@@ -171,7 +173,7 @@ public class SdlcRunServiceTests
 
         var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
 
-        var act = async () => await service.ApproveGateAsync(gateId);
+        var act = async () => await service.ApproveGateAsync(gateId, "user-123", "Test User", "notes");
         await act.Should().ThrowAsync<KeyNotFoundException>();
     }
 
@@ -190,10 +192,12 @@ public class SdlcRunServiceTests
         _gateStore.Gates[gateId] = gate;
 
         var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
-        await service.RejectGateAsync(gateId, notes);
+        await service.RejectGateAsync(gateId, "user-123", "Test User", notes);
 
         gate.Status.Should().Be(GateStatus.Rejected);
         gate.Notes.Should().Be(notes);
+        gate.ResolvedById.Should().Be("user-123");
+        gate.ResolvedByDisplay.Should().Be("Test User");
         await WaitForRunnerAsync();
         _runner.ResumedGate.Should().Be(gateId);
     }
@@ -205,7 +209,7 @@ public class SdlcRunServiceTests
 
         var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, _runner);
 
-        var act = async () => await service.RejectGateAsync(gateId, "reason");
+        var act = async () => await service.RejectGateAsync(gateId, "user-123", "Test User", "reason");
         await act.Should().ThrowAsync<KeyNotFoundException>();
     }
 
@@ -268,13 +272,15 @@ public class SdlcRunServiceTests
 
         public Task<StageGate?> GetAsync(Guid gateId) => Task.FromResult(Gates.GetValueOrDefault(gateId));
 
-        public Task ResolveAsync(Guid gateId, GateDecision decision, string? notes)
+        public Task ResolveAsync(Guid gateId, GateDecision decision, string? notes, string resolvedById, string resolvedByDisplay)
         {
             if (Gates.TryGetValue(gateId, out var gate))
             {
                 gate.Status = decision == GateDecision.Approved ? GateStatus.Approved : GateStatus.Rejected;
                 gate.Notes = notes;
                 gate.ResolvedAt = DateTimeOffset.UtcNow;
+                gate.ResolvedById = resolvedById;
+                gate.ResolvedByDisplay = resolvedByDisplay;
             }
             return Task.CompletedTask;
         }

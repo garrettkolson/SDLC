@@ -62,7 +62,7 @@ public class StageGateStoreTests
         var artifact = new ResearchBrief { RunId = Guid.NewGuid(), Stage = SdlcStage.Research };
         var gate = await _store.CreateGateAsync(artifact);
 
-        await _store.ResolveAsync(gate.GateId, GateDecision.Approved, notes: null);
+        await _store.ResolveAsync(gate.GateId, GateDecision.Approved, notes: null, "system", "system");
 
         var retrieved = await _store.GetAsync(gate.GateId);
         retrieved!.Status.Should().Be(GateStatus.Approved);
@@ -75,7 +75,7 @@ public class StageGateStoreTests
         var artifact = new ResearchBrief { RunId = Guid.NewGuid(), Stage = SdlcStage.Research };
         var gate = await _store.CreateGateAsync(artifact);
 
-        await _store.ResolveAsync(gate.GateId, GateDecision.Rejected, "Needs more detail");
+        await _store.ResolveAsync(gate.GateId, GateDecision.Rejected, "Needs more detail", "user-1", "User One");
 
         var retrieved = await _store.GetAsync(gate.GateId);
         retrieved!.Status.Should().Be(GateStatus.Rejected);
@@ -92,7 +92,7 @@ public class StageGateStoreTests
         var g1 = await _store.CreateGateAsync(a1);
         var g2 = await _store.CreateGateAsync(a2);
 
-        await _store.ResolveAsync(g1.GateId, GateDecision.Approved, null);
+        await _store.ResolveAsync(g1.GateId, GateDecision.Approved, null, "system", "system");
 
         var pending = await _store.GetPendingForRunAsync(runId);
         pending.Should().HaveCount(1);

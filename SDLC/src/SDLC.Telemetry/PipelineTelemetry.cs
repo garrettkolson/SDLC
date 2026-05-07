@@ -14,6 +14,7 @@ public record StepEvent(
 public record GateEvent(
     Guid GateId,
     bool Approved,
+    string? UserId,
     DateTimeOffset Timestamp);
 
 public record PipelineEvent(
@@ -26,8 +27,8 @@ public interface IPipelineTelemetry
 {
     Task RecordStepCompletedAsync(SdlcStage stage, string stepName, CancellationToken ct = default);
     Task RecordStepFailedAsync(SdlcStage stage, string stepName, Exception ex, CancellationToken ct = default);
-    Task RecordGateApprovedAsync(Guid gateId, CancellationToken ct = default);
-    Task RecordGateRejectedAsync(Guid gateId, CancellationToken ct = default);
+    Task RecordGateApprovedAsync(Guid gateId, string? userId = null, CancellationToken ct = default);
+    Task RecordGateRejectedAsync(Guid gateId, string? userId = null, CancellationToken ct = default);
     Task StartPipelineRunAsync(Guid runId, string projectBrief, CancellationToken ct = default);
     Task CompletePipelineRunAsync(Guid runId, CancellationToken ct = default);
 
@@ -52,16 +53,16 @@ public class PipelineTelemetry : IPipelineTelemetry
         _stepEvents.Enqueue(new StepEvent(stage, stepName, false, DateTimeOffset.UtcNow, ex.Message));
     }
 
-    public async Task RecordGateApprovedAsync(Guid gateId, CancellationToken ct = default)
+    public async Task RecordGateApprovedAsync(Guid gateId, string? userId = null, CancellationToken ct = default)
     {
         SdlcTelemetry.GatesApproved.Add(1);
-        _gateEvents.Enqueue(new GateEvent(gateId, true, DateTimeOffset.UtcNow));
+        _gateEvents.Enqueue(new GateEvent(gateId, true, userId, DateTimeOffset.UtcNow));
     }
 
-    public async Task RecordGateRejectedAsync(Guid gateId, CancellationToken ct = default)
+    public async Task RecordGateRejectedAsync(Guid gateId, string? userId = null, CancellationToken ct = default)
     {
         SdlcTelemetry.GatesRejected.Add(1);
-        _gateEvents.Enqueue(new GateEvent(gateId, false, DateTimeOffset.UtcNow));
+        _gateEvents.Enqueue(new GateEvent(gateId, false, userId, DateTimeOffset.UtcNow));
     }
 
     public async Task StartPipelineRunAsync(Guid runId, string projectBrief, CancellationToken ct = default)

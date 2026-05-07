@@ -85,7 +85,7 @@ public class SdlcRunServiceGetActiveRunsTests
     {
         public Task<StageGate> CreateGateAsync(SdlcArtifact artifact) => throw new NotImplementedException();
         public Task<StageGate?> GetAsync(Guid id) => Task.FromResult<StageGate?>(null);
-        public Task ResolveAsync(Guid id, GateDecision decision, string? notes) => throw new NotImplementedException();
+        public Task ResolveAsync(Guid id, GateDecision decision, string? notes, string resolvedById, string resolvedByDisplay) => throw new NotImplementedException();
         public Task<List<StageGate>> GetPendingForRunAsync(Guid runId) => Task.FromResult(new List<StageGate>());
     }
 

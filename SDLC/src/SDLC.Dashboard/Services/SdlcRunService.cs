@@ -21,8 +21,8 @@ public interface ISdlcRunService
 {
     Task<IReadOnlyList<RunSummary>> GetActiveRunsAsync(CancellationToken ct = default);
     Task<RunDetail?> GetRunDetailAsync(Guid runId, CancellationToken ct = default);
-    Task ApproveGateAsync(Guid gateId, string? notes = null, CancellationToken ct = default);
-    Task RejectGateAsync(Guid gateId, string notes, CancellationToken ct = default);
+    Task ApproveGateAsync(Guid gateId, string approverUserId, string approverDisplayName, string? notes, CancellationToken ct = default);
+    Task RejectGateAsync(Guid gateId, string approverUserId, string approverDisplayName, string notes, CancellationToken ct = default);
 }
 
 public record RunDetail(
@@ -104,25 +104,25 @@ public class SdlcRunService(
             allGates.AsReadOnly());
     }
 
-    public async Task ApproveGateAsync(Guid gateId, string? notes = null, CancellationToken ct = default)
+    public async Task ApproveGateAsync(Guid gateId, string approverUserId, string approverDisplayName, string? notes, CancellationToken ct = default)
     {
         var gate = await gateStore.GetAsync(gateId);
         if (gate is null)
             throw new KeyNotFoundException($"Gate {gateId} not found");
-        
-        await gateStore.ResolveAsync(gateId, GateDecision.Approved, notes);
-        await telemetry.RecordGateApprovedAsync(gateId, ct);
-        
+
+        await gateStore.ResolveAsync(gateId, GateDecision.Approved, notes, approverUserId, approverDisplayName);
+        await telemetry.RecordGateApprovedAsync(gateId, approverUserId, ct);
+
         Task.Run(() => runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Approved, notes, ct));
     }
 
-    public async Task RejectGateAsync(Guid gateId, string notes, CancellationToken ct = default)
+    public async Task RejectGateAsync(Guid gateId, string approverUserId, string approverDisplayName, string notes, CancellationToken ct = default)
     {
         var gate = await gateStore.GetAsync(gateId)
             ?? throw new KeyNotFoundException($"Gate {gateId} not found");
 
-        await gateStore.ResolveAsync(gateId, GateDecision.Rejected, notes);
-        await telemetry.RecordGateRejectedAsync(gateId, ct);
+        await gateStore.ResolveAsync(gateId, GateDecision.Rejected, notes, approverUserId, approverDisplayName);
+        await telemetry.RecordGateRejectedAsync(gateId, approverUserId, ct);
 
         Task.Run(() => runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Rejected, notes, ct));
     }

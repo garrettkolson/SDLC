@@ -87,9 +87,9 @@ public class PipelineRunnerService(
         {
             tcs.TrySetResult(new GateResolution(gateId, decision, notes));
             if (decision == GateDecision.Approved)
-                await telemetry.RecordGateApprovedAsync(gateId, ct);
+                await telemetry.RecordGateApprovedAsync(gateId, ct: ct);
             else if (decision == GateDecision.Rejected)
-                await telemetry.RecordGateRejectedAsync(gateId, ct);
+                await telemetry.RecordGateRejectedAsync(gateId, ct: ct);
         }
     }
 }

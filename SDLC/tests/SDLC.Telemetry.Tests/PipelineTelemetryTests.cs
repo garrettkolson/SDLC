@@ -60,24 +60,26 @@ public class PipelineTelemetryTests
     public async Task RecordGateApprovedAsync_RecordsEvent()
     {
         var gateId = Guid.NewGuid();
-        await _telemetry.RecordGateApprovedAsync(gateId);
+        await _telemetry.RecordGateApprovedAsync(gateId, "user-456");
         var events = await _telemetry.GetGateEventsAsync();
 
         events.Should().ContainSingle();
         events[0].GateId.Should().Be(gateId);
         events[0].Approved.Should().BeTrue();
+        events[0].UserId.Should().Be("user-456");
     }
 
     [Test]
     public async Task RecordGateRejectedAsync_RecordsEvent()
     {
         var gateId = Guid.NewGuid();
-        await _telemetry.RecordGateRejectedAsync(gateId);
+        await _telemetry.RecordGateRejectedAsync(gateId, "user-789");
         var events = await _telemetry.GetGateEventsAsync();
 
         events.Should().ContainSingle();
         events[0].GateId.Should().Be(gateId);
         events[0].Approved.Should().BeFalse();
+        events[0].UserId.Should().Be("user-789");
     }
 
     [Test]

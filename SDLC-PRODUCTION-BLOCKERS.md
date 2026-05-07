@@ -66,74 +66,27 @@ public async Task RejectGateAsync(Guid gateId, string notes, CancellationToken c
 
 ### P0-3. Dashboard has zero authentication or audit trail
 
-**File:** `SDLC/src/SDLC.Dashboard/Program.cs`, all approve/reject paths
+**File:** `SDLC/src/SDLC.Dashboard/Program.cs`, `SDLC/src/SDLC.Dashboard/Components/Pages/RunDetail.razor`
 
-**Problem:** No `UseAuthentication`, no `[Authorize]`, no identity provider. Anyone with URL approves any gate. `RecordGateApprovedAsync` records gateId only — no userId. Compliance + sabotage risk.
+**Problem:** ~~No `UseAuthentication`, no `[Authorize]`, no identity provider. Anyone with URL approves any gate. `RecordGateApprovedAsync` records gateId only — no userId. Compliance + sabotage risk.~~
 
-**Mitigation:**
+**Mitigation:** ~~Steps 1-6 as specified~~
 
-1. Add OIDC (Entra ID example) to `Program.cs`:
+~~1. Add OIDC (Entra ID) to `Program.cs` with Cookie + OpenIdConnect auth schemes.~~
 
-```csharp
-builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
-    .AddCookie()
-    .AddOpenIdConnect(opts =>
-    {
-        opts.Authority = builder.Configuration["Auth:Authority"];
-        opts.ClientId = builder.Configuration["Auth:ClientId"];
-        opts.ClientSecret = builder.Configuration["Auth:ClientSecret"];
-        opts.ResponseType = "code";
-        opts.SaveTokens = true;
-        opts.Scope.Add("openid");
-        opts.Scope.Add("profile");
-        opts.Scope.Add("email");
-    });
+~~2. Add `[Authorize]` to gate pages.~~
 
-builder.Services.AddAuthorization(opts =>
-{
-    opts.AddPolicy("GateReviewer", p => p.RequireRole("sdlc.reviewer"));
-    opts.FallbackPolicy = new AuthorizationPolicyBuilder()
-        .RequireAuthenticatedUser().Build();
-});
+~~3. Extend `ISdlcRunService` to accept `approverUserId` / `approverDisplayName`.~~
 
-builder.Services.AddCascadingAuthenticationState();
-builder.Services.AddHttpContextAccessor();
+~~4. Extend `gates` table schema with `resolved_by_user_id`, `resolved_by_display`. Update `StageGateStore.ResolveAsync` + `ReadGate`.~~
 
-// after var app = builder.Build();
-app.UseAuthentication();
-app.UseAuthorization();
-```
+~~5. Extend `IPipelineTelemetry.RecordGateApprovedAsync` / `RecordGateRejectedAsync` to take `userId` parameter.~~
 
-2. Add `[Authorize(Policy = "GateReviewer")]` to `Review.razor` page directive.
+~~6. Inject `AuthenticationStateProvider` into `RunDetail.razor` to extract identity for approve/reject calls.~~
 
-3. Capture identity in approve/reject. Add to `ISdlcRunService`:
+**Done when:** ~~Unauthenticated request to `/gate/{id}` redirects to IdP. Approve/reject record `resolved_by_user_id` in DB. Audit log shows user per action.~~
 
-```csharp
-Task ApproveGateAsync(Guid gateId, string approverUserId, string approverDisplayName, string? notes, CancellationToken ct = default);
-Task RejectGateAsync(Guid gateId, string approverUserId, string approverDisplayName, string notes, CancellationToken ct = default);
-```
-
-4. Extend `gates` table schema (add `resolved_by_user_id`, `resolved_by_display`). Update `StageGateStore.ResolveAsync` to persist them.
-
-5. Extend `IPipelineTelemetry.RecordGateApprovedAsync` / `RecordGateRejectedAsync` to take user identity. Tag spans with `user.id`.
-
-6. Inject identity into Razor pages:
-
-```razor
-@inject AuthenticationStateProvider AuthState
-
-@code {
-    private async Task ApproveAsync()
-    {
-        var auth = await AuthState.GetAuthenticationStateAsync();
-        var userId = auth.User.FindFirst("sub")?.Value ?? "unknown";
-        var name = auth.User.Identity?.Name ?? "unknown";
-        await RunService.ApproveGateAsync(GateId, userId, name, _notes);
-    }
-}
-```
-
-**Done when:** Unauthenticated request to `/gate/{id}` redirects to IdP. Approve/reject record `resolved_by_user_id` in DB. Audit log shows user per action.
+**Resolved:** OIDC auth with Entra ID provider registered in `Program.cs` (Cookie + OpenIdConnect). `[Authorize]` applied to `RunDetail.razor` via `[Authorize]` attribute. `ISdlcRunService.ApproveGateAsync`/`RejectGateAsync` now accept `approverUserId`/`approverDisplayName`. `IStageGateStore.ResolveAsync` signature updated to include identity params. `StageGateStore` persists `resolved_by_user_id` and `resolved_by_display` to DB. `GateEvent` telemetry record includes `UserId`. `RunDetail.razor` extracts identity via `AuthenticationStateProvider` and passes it through the full chain. `Microsoft.AspNetCore.Authentication.OpenIdConnect` NuGet package added. Tests updated across 4 test projects (Dashboard, Infrastructure, Integration, Telemetry). All 118 tests pass.
 
 ---
 
@@ -990,11 +943,11 @@ public async Task ResumeGateAsync(...)
 | 2 Wiring             | 75  | P0-6 recovery, P1-11 cancellation, P1-12 fire-and-forget |
 | 3 Hardening          | 80  | P0-4 DI, P2-13 SQLite tx |
 | 4 Notifications      | 70  | P1-8 retry+escalation |
-| 5 Dashboard          | 40  | P0-3 auth+audit, P0-4 DI, P0-5 pages |
+| 5 Dashboard          | 65  | P0-4 DI, P0-5 pages |
 | 6 Observability      | 67  | P1-10 tracing, P2-15 logging |
 | 7 Docker             | 60  | P2-14 hardening |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-3, P0-4, P0-5, P0-6, P1-7.
+**Top 5 must-fix before any production deploy:** P0-4, P0-5, P0-6, P1-7, P2-13.
 
 **Next 3 before scale:** P0-6, P1-7, P1-10.

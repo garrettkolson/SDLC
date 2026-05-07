@@ -178,7 +178,7 @@ public class ArtifactAndGatePipelineTests
         await _artifactStore.SaveAsync(brief);
         var gate = await _gateStore.CreateGateAsync(brief);
 
-        await _gateStore.ResolveAsync(gate.GateId, GateDecision.Approved, "Looks good");
+        await _gateStore.ResolveAsync(gate.GateId, GateDecision.Approved, "Looks good", "integration-user", "Integration User");
 
         var resolved = await _gateStore.GetAsync(gate.GateId);
 
@@ -203,7 +203,7 @@ public class ArtifactAndGatePipelineTests
         await _artifactStore.SaveAsync(brief);
         var gate = await _gateStore.CreateGateAsync(brief);
 
-        await _gateStore.ResolveAsync(gate.GateId, GateDecision.Rejected, "Needs more work");
+        await _gateStore.ResolveAsync(gate.GateId, GateDecision.Rejected, "Needs more work", "integration-user", "Integration User");
 
         var resolved = await _gateStore.GetAsync(gate.GateId);
 
@@ -226,7 +226,7 @@ public class ArtifactAndGatePipelineTests
         await _artifactStore.SaveAsync(brief);
         var gate = await _gateStore.CreateGateAsync(brief);
 
-        await _gateStore.ResolveAsync(gate.GateId, GateDecision.Approved, null);
+        await _gateStore.ResolveAsync(gate.GateId, GateDecision.Approved, null, "integration-user", "Integration User");
 
         var pending = await _gateStore.GetPendingForRunAsync(runId);
         pending.Should().BeEmpty();
@@ -259,7 +259,7 @@ public class ArtifactAndGatePipelineTests
         };
         await _artifactStore.SaveAsync(resolvedBrief);
         var resolvedGate = await _gateStore.CreateGateAsync(resolvedBrief);
-        await _gateStore.ResolveAsync(resolvedGate.GateId, GateDecision.Approved, null);
+        await _gateStore.ResolveAsync(resolvedGate.GateId, GateDecision.Approved, null, "integration-user", "Integration User");
 
         var pending = await _gateStore.GetPendingForRunAsync(runId);
         pending.Should().ContainSingle(g => g.GateId == pendingGate.GateId);

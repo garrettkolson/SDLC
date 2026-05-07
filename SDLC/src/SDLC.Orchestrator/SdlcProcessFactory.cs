@@ -95,12 +95,12 @@ public class SdlcProcessFactory(
         }
 
         var resolution = await runner.WaitForGateAsync(gate.GateId, ct);
-        await gateStore.ResolveAsync(gate.GateId, resolution.Decision, resolution.Notes);
+        await gateStore.ResolveAsync(gate.GateId, resolution.Decision, resolution.Notes, "system", "system");
 
         if (resolution.Decision == GateDecision.Approved)
-            await telemetry.RecordGateApprovedAsync(gate.GateId, ct);
+            await telemetry.RecordGateApprovedAsync(gate.GateId, ct: ct);
         else if (resolution.Decision == GateDecision.Rejected)
-            await telemetry.RecordGateRejectedAsync(gate.GateId, ct);
+            await telemetry.RecordGateRejectedAsync(gate.GateId, ct: ct);
 
         if (resolution.Decision == GateDecision.Rejected)
             throw new GateRejectedException(gate.GateId, resolution.Notes);
