@@ -64,7 +64,7 @@ public class StageGateStore : IStageGateStore
         await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         await conn.OpenAsync();
         await using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(@"
-            SELECT gate_id, run_id, stage, status, notes, resolved_at, resolved_by_user_id, resolved_by_display, artifact_content, artifact_type
+            SELECT gate_id, run_id, stage, status, notes, resolved_at, resolved_by_user_id, resolved_by_display, artifact_content, artifact_type, created_at
             FROM gates WHERE gate_id = @id", conn);
         cmd.Parameters.AddWithValue("@id", gateId.ToString());
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -99,9 +99,23 @@ public class StageGateStore : IStageGateStore
         await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
         await conn.OpenAsync();
         await using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(@"
-            SELECT gate_id, run_id, stage, status, notes, resolved_at, resolved_by_user_id, resolved_by_display, artifact_content, artifact_type
+            SELECT gate_id, run_id, stage, status, notes, resolved_at, resolved_by_user_id, resolved_by_display, artifact_content, artifact_type, created_at
             FROM gates WHERE run_id = @run_id AND status = 'Pending'", conn);
         cmd.Parameters.AddWithValue("@run_id", runId.ToString());
+        await using var reader = await cmd.ExecuteReaderAsync();
+        var gates = new List<StageGate>();
+        while (await reader.ReadAsync())
+            gates.Add(ReadGate(reader));
+        return gates;
+    }
+
+    public async Task<List<StageGate>> GetAllPendingAsync()
+    {
+        await using var conn = new Microsoft.Data.Sqlite.SqliteConnection(_connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new Microsoft.Data.Sqlite.SqliteCommand(@"
+            SELECT gate_id, run_id, stage, status, notes, resolved_at, resolved_by_user_id, resolved_by_display, artifact_content, artifact_type, created_at
+            FROM gates WHERE status = 'Pending'", conn);
         await using var reader = await cmd.ExecuteReaderAsync();
         var gates = new List<StageGate>();
         while (await reader.ReadAsync())
@@ -125,6 +139,7 @@ public class StageGateStore : IStageGateStore
         int resolvedIdx = reader.GetOrdinal("resolved_at");
         int resolvedByIdIdx = reader.GetOrdinal("resolved_by_user_id");
         int resolvedByDisplayIdx = reader.GetOrdinal("resolved_by_display");
+        int createdIdx = reader.GetOrdinal("created_at");
 
         return new StageGate
         {
@@ -136,6 +151,7 @@ public class StageGateStore : IStageGateStore
             ResolvedAt = reader.IsDBNull(resolvedIdx) ? null : DateTimeOffset.Parse(reader.GetString(resolvedIdx)),
             ResolvedById = reader.IsDBNull(resolvedByIdIdx) ? null : reader.GetString(resolvedByIdIdx),
             ResolvedByDisplay = reader.IsDBNull(resolvedByDisplayIdx) ? null : reader.GetString(resolvedByDisplayIdx),
+            CreatedAt = DateTimeOffset.Parse(reader.GetString(createdIdx)),
             Artifact = artifact
         };
     }

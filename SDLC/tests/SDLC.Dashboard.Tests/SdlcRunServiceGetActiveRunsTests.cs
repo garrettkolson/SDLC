@@ -87,6 +87,7 @@ public class SdlcRunServiceGetActiveRunsTests
         public Task<StageGate?> GetAsync(Guid id) => Task.FromResult<StageGate?>(null);
         public Task ResolveAsync(Guid id, GateDecision decision, string? notes, string resolvedById, string resolvedByDisplay) => throw new NotImplementedException();
         public Task<List<StageGate>> GetPendingForRunAsync(Guid runId) => Task.FromResult(new List<StageGate>());
+        public Task<List<StageGate>> GetAllPendingAsync() => Task.FromResult(new List<StageGate>());
     }
 
     private class TestRunner : IPipelineRunner

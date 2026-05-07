@@ -12,6 +12,9 @@ namespace SDLC.Orchestrator.Tests;
 [TestFixture, SingleThreaded]
 public class PipelineRunnerServiceTests
 {
+    private static IStageGateStore CreateGateStoreStub() => Substitute.For<IStageGateStore>();
+    private static IRunStore CreateRunStoreStub() => Substitute.For<IRunStore>();
+
     [Test]
     public async Task EnqueueAsync_AddsRunToActiveRuns()
     {
@@ -20,8 +23,7 @@ public class PipelineRunnerServiceTests
             .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry);
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
         var config = new SdlcRunConfig { ProjectBrief = "Test project" };
 
         await runner.EnqueueAsync(config);
@@ -37,8 +39,7 @@ public class PipelineRunnerServiceTests
             .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry);
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
         await runner.EnqueueAsync(new SdlcRunConfig { ProjectBrief = "Project A" });
         await runner.EnqueueAsync(new SdlcRunConfig { ProjectBrief = "Project B" });
         await runner.EnqueueAsync(new SdlcRunConfig { ProjectBrief = "Project C" });
@@ -54,8 +55,7 @@ public class PipelineRunnerServiceTests
             .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry);        
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
         var config = new SdlcRunConfig { ProjectBrief = "Test" };
 
         await runner.EnqueueAsync(config);
@@ -69,8 +69,7 @@ public class PipelineRunnerServiceTests
         var processFactory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry);
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
         runner.IsRunActive(Guid.NewGuid()).Should().BeFalse();
     }
 
@@ -80,8 +79,7 @@ public class PipelineRunnerServiceTests
         var processFactory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry);
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
         var act = () => runner.ResumeGateAsync(Guid.NewGuid(), Guid.NewGuid(), GateDecision.Approved, null);
 
         await act.Should().ThrowAsync<InvalidOperationException>();
@@ -95,8 +93,7 @@ public class PipelineRunnerServiceTests
             .Returns(new ProcessHandle(new TaskCompletionSource<Task>().Task));
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry);
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
         var runId = Guid.NewGuid();
         var config1 = new SdlcRunConfig { RunId = runId, ProjectBrief = "Test" };
         await runner.EnqueueAsync(config1);

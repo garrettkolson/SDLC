@@ -19,7 +19,18 @@ public interface IStageGateStore
     Task<StageGate?> GetAsync(Guid gateId);
     Task ResolveAsync(Guid gateId, GateDecision decision, string? notes, string resolvedById, string resolvedByDisplay);
     Task<List<StageGate>> GetPendingForRunAsync(Guid runId);
+    Task<List<StageGate>> GetAllPendingAsync();
 }
+
+public interface IRunStore
+{
+    Task CreateRunAsync(Guid runId, string projectBrief, string startedAt);
+    Task UpdateStageAsync(Guid runId, string stage, string status);
+    Task<RunCheckpoint?> GetRunAsync(Guid runId);
+    Task<List<RunCheckpoint>> GetAllIncompleteAsync();
+}
+
+public record RunCheckpoint(Guid RunId, string CurrentStage, string Status, DateTimeOffset StartedAt);
 
 public class StageGate
 {
@@ -31,5 +42,6 @@ public class StageGate
     public DateTimeOffset? ResolvedAt { get; set; }
     public string? ResolvedById { get; set; }
     public string? ResolvedByDisplay { get; set; }
+    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public SdlcArtifact? Artifact { get; set; }
 }

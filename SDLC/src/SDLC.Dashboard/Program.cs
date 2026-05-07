@@ -15,10 +15,14 @@ builder.Services.AddControllers();
 
 var dbConn = builder.Configuration.GetConnectionString("SDLCDb") ?? "Data Source=sdlc.db";
 var artifactDir = Path.Combine(AppContext.BaseDirectory, "artifacts");
+
 builder.Services.AddSingleton<SDLC.Infrastructure.IArtifactStore>(
     new SDLC.Infrastructure.ArtifactStore(dbConn, artifactDir));
 builder.Services.AddSingleton<SDLC.Infrastructure.IStageGateStore>(
     new SDLC.Infrastructure.StageGateStore(dbConn));
+builder.Services.AddSingleton<SDLC.Infrastructure.RunStore>(
+    new SDLC.Infrastructure.RunStore(dbConn));
+builder.Services.AddSingleton<SDLC.Infrastructure.IRunStore>(sp => sp.GetRequiredService<SDLC.Infrastructure.RunStore>());
 
 // HTTP client and notification service
 builder.Services.AddHttpClient();
@@ -57,6 +61,7 @@ builder.Services.AddSingleton<SdlcProcessFactory>();
 builder.Services.AddSingleton<ISdlcProcessFactory>(sp => sp.GetRequiredService<SdlcProcessFactory>());
 builder.Services.AddSingleton<PipelineRunnerService>();
 builder.Services.AddSingleton<IPipelineRunner>(sp => sp.GetRequiredService<PipelineRunnerService>());
+builder.Services.AddHostedService<PipelineRecoveryHostedService>();
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter("SDLC"));
 

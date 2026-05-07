@@ -6,6 +6,7 @@ namespace SDLC.Orchestrator;
 public interface ISdlcProcessFactory
 {
     ProcessHandle StartAsync(SdlcRunConfig config);
+    ProcessHandle ResumeAsync(SdlcRunConfig config, string stage);
 }
 
 // Minimal SK Process abstraction for testability

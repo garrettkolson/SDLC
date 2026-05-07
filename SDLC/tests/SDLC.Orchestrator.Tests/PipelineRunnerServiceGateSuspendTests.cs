@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using NSubstitute;
 using NUnit.Framework;
 using SDLC.Contracts;
+using SDLC.Infrastructure;
 using SDLC.Telemetry;
 
 namespace SDLC.Orchestrator.Tests;
@@ -13,13 +14,16 @@ namespace SDLC.Orchestrator.Tests;
 [TestFixture]
 public class PipelineRunnerServiceGateSuspendTests
 {
+    private static IStageGateStore CreateGateStoreStub() => Substitute.For<IStageGateStore>();
+    private static IRunStore CreateRunStoreStub() => Substitute.For<IRunStore>();
+
     [Test]
     public async Task WaitForGateAsync_BlocksUntilResumeGateAsync()
     {
         var factory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        var runner = new PipelineRunnerService(factory, logger, telemetry);
+        var runner = new PipelineRunnerService(factory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
 
         var runId = Guid.NewGuid();
         var gateId = Guid.NewGuid();
@@ -45,7 +49,7 @@ public class PipelineRunnerServiceGateSuspendTests
         var factory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        var runner = new PipelineRunnerService(factory, logger, telemetry);
+        var runner = new PipelineRunnerService(factory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
 
         var runId = Guid.NewGuid();
         var gateId = Guid.NewGuid();
@@ -69,7 +73,7 @@ public class PipelineRunnerServiceGateSuspendTests
         var factory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        var runner = new PipelineRunnerService(factory, logger, telemetry);
+        var runner = new PipelineRunnerService(factory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
 
         var gateId = Guid.NewGuid();
         using var cts = new CancellationTokenSource();

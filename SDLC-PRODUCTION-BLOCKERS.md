@@ -230,6 +230,23 @@ public async Task RecoverPendingGatesAsync()
 
 **Done when:** Kill orchestrator process while gate pending → restart → dashboard shows gate, approval still routes to (now-dead) pipeline... With (a), pipeline must be re-enqueued. With (b), pipeline resumes at next stage.
 
+**Resolved:** Approach (b) implemented.
+
+| File | Change |
+|------|--------|
+| `SDLC/src/SDLC.Infrastructure/Interfaces.cs` | Added `CreatedAt` to `StageGate`, `GetAllPendingAsync()` to `IStageGateStore`, new `IRunStore` interface + `RunCheckpoint` record |
+| `SDLC/src/SDLC.Infrastructure/StageGateStore.cs` | Read `created_at`, implemented `GetAllPendingAsync()` |
+| `SDLC/src/SDLC.Infrastructure/RunStore.cs` | New — `runs` table with CRUD: `CreateRunAsync`, `UpdateStageAsync`, `GetRunAsync`, `GetAllIncompleteAsync` |
+| `SDLC/src/SDLC.Orchestrator/SdlcProcess.cs` | Added `IStageGateStore` + `IRunStore` params, `RecoverPendingGatesAsync()`, `ResumeRunAsync()`, `GetAllActiveRunIds()` |
+| `SDLC/src/SDLC.Orchestrator/SdlcProcessFactory.cs` | Added `IRunStore` param, `ResumeAsync()` that skips to checkpointed stage, checkpoint saves at each stage boundary |
+| `SDLC/src/SDLC.Orchestrator/OrchestratorContracts.cs` | Added `ResumeAsync` to `ISdlcProcessFactory` |
+| `SDLC/src/SDLC.Orchestrator/PipelineRecoveryHostedService.cs` | New — `IHostedService` that calls `RecoverPendingGatesAsync()` on startup |
+| `SDLC/src/SDLC.Dashboard/Program.cs` | Registered `IRunStore` + `PipelineRecoveryHostedService` |
+
+**Tests:** 5 new recovery tests in `PipelineRunnerServiceRecoveryTests`, 5 `RunStore` tests, 2 `GetAllPendingAsync` tests — all passing (117 total tests).
+
+**Verification:** Kill orchestrator during gate pending → restart → gate visible in dashboard. Kill after gate1 completion → restart → run auto-resumes at Design stage.
+
 ---
 
 ## P1 — High Risk

@@ -287,9 +287,12 @@ public class SdlcRunServiceTests
 
         public Task<List<StageGate>> GetPendingForRunAsync(Guid runId) =>
             Task.FromResult(Gates.Values.Where(g => g.RunId == runId && g.Status == GateStatus.Pending).ToList());
+
+        public Task<List<StageGate>> GetAllPendingAsync() =>
+            Task.FromResult(Gates.Values.Where(g => g.Status == GateStatus.Pending).ToList());
     }
 
-    private class TestRunner() : PipelineRunnerService(null!, null!, null!)
+    private class TestRunner() : PipelineRunnerService(null!, null!, null!, Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>())
     {
         private readonly Dictionary<Guid, bool> _activeRuns = new();
         public Guid ResumedGate { get; private set; }

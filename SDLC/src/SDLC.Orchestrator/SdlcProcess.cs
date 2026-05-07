@@ -40,11 +40,15 @@ public class StageGateStep
 public class PipelineRunnerService(
     ISdlcProcessFactory processFactory,
     ILogger<PipelineRunnerService> logger,
-    IPipelineTelemetry telemetry)
+    IPipelineTelemetry telemetry,
+    IStageGateStore gateStore,
+    IRunStore runStore)
     : IPipelineRunner
 {
     private readonly ConcurrentDictionary<Guid, object> _activeRuns = new();
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<GateResolution>> _pendingGates = new();
+    private readonly IStageGateStore _gateStore = gateStore;
+    private readonly IRunStore _runStore = runStore;
 
     public int ActiveRunCount => _activeRuns.Count;
 
@@ -92,4 +96,56 @@ public class PipelineRunnerService(
                 await telemetry.RecordGateRejectedAsync(gateId, ct: ct);
         }
     }
+
+    public async Task RecoverPendingGatesAsync()
+    {
+        var pendingGates = await _gateStore.GetAllPendingAsync();
+        foreach (var gate in pendingGates)
+        {
+            var tcs = new TaskCompletionSource<GateResolution>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _pendingGates[gate.GateId] = tcs;
+            _activeRuns.TryAdd(gate.RunId, new object());
+        }
+
+        var incompleteRuns = await _runStore.GetAllIncompleteAsync();
+        foreach (var run in incompleteRuns)
+        {
+            _activeRuns.TryAdd(run.RunId, new object());
+        }
+
+        foreach (var run in incompleteRuns)
+        {
+            var pendingForRun = await _gateStore.GetPendingForRunAsync(run.RunId);
+            if (pendingForRun.Count == 0)
+            {
+                logger.LogInformation("Auto-resuming run {RunId} at stage {Stage}", run.RunId, run.CurrentStage);
+                await ResumeRunAsync(run);
+            }
+            else
+            {
+                logger.LogInformation("Run {RunId} blocked on pending gate at stage {Stage}", run.RunId, run.CurrentStage);
+            }
+        }
+
+        if (pendingGates.Count > 0)
+            logger.LogInformation("Recovered {Count} pending gates on startup", pendingGates.Count);
+    }
+
+    private async Task ResumeRunAsync(RunCheckpoint run)
+    {
+        var config = new SdlcRunConfig { RunId = run.RunId, ProjectBrief = "" };
+        var handle = processFactory.ResumeAsync(config, run.CurrentStage);
+        _ = handle.Task.ContinueWith(async t =>
+        {
+            _activeRuns.TryRemove(run.RunId, out _);
+            await telemetry.CompletePipelineRunAsync(run.RunId, default);
+            if (t.IsFaulted)
+                logger.LogError(t.Exception, "Recovery run {RunId} failed", run.RunId);
+            else
+                logger.LogInformation("Recovery run {RunId} completed", run.RunId);
+        }, TaskScheduler.Default);
+    }
+
+    public IReadOnlyCollection<Guid> GetAllActiveRunIds()
+        => _activeRuns.Keys.ToList().AsReadOnly();
 }
