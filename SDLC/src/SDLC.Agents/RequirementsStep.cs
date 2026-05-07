@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
 using SDLC.Telemetry;
@@ -18,6 +19,7 @@ public class RequirementsStep
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        using var activity = telemetry.StartStageActivity(config.RunId, SdlcStage.Requirements);
         try
         {
             var kernel = kernelFactory.CreateForStage(SdlcStage.Requirements);
@@ -47,16 +49,20 @@ public class RequirementsStep
             await artifacts.SaveAsync(spec);
             await context.EmitEventAsync(new KernelProcessEvent { Id = SdlcEvents.RequirementsComplete, Data = spec }, ct);
             await telemetry.RecordStepCompletedAsync(SdlcStage.Requirements, nameof(RequirementsStep), ct);
+            activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddTag("error.type", ex.GetType().Name);
+            activity?.AddTag("error.message", ex.Message);
             await telemetry.RecordStepFailedAsync(SdlcStage.Requirements, nameof(RequirementsStep), ex, ct);
             throw;
         }
         finally
         {
             sw.Stop();
-            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds, 
+            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds,
                 new KeyValuePair<string, object?>[] { new("sdlc.stage", "Requirements") });
         }
     }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
 using SDLC.Telemetry;
@@ -19,6 +20,7 @@ public class LearnStep
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        using var activity = telemetry.StartStageActivity(config.RunId, SdlcStage.Learn);
         try
         {
             var kernel = kernelFactory.CreateForStage(SdlcStage.Learn);
@@ -54,9 +56,13 @@ public class LearnStep
             await artifacts.SaveAsync(report);
             await context.EmitEventAsync(new KernelProcessEvent { Id = SdlcEvents.LearnComplete, Data = report }, ct);
             await telemetry.RecordStepCompletedAsync(SdlcStage.Learn, nameof(LearnStep), ct);
+            activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddTag("error.type", ex.GetType().Name);
+            activity?.AddTag("error.message", ex.Message);
             await telemetry.RecordStepFailedAsync(SdlcStage.Learn, nameof(LearnStep), ex, ct);
             throw;
         }

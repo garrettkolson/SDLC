@@ -47,8 +47,6 @@ public class PipelineRunnerService(
 {
     private readonly ConcurrentDictionary<Guid, object> _activeRuns = new();
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<GateResolution>> _pendingGates = new();
-    private readonly IStageGateStore _gateStore = gateStore;
-    private readonly IRunStore _runStore = runStore;
 
     public int ActiveRunCount => _activeRuns.Count;
 
@@ -64,6 +62,8 @@ public class PipelineRunnerService(
 
     public virtual async Task EnqueueAsync(SdlcRunConfig config, CancellationToken ct = default)
     {
+        using var runActivity = telemetry.StartRunActivity(config.RunId);
+
         if (!_activeRuns.TryAdd(config.RunId, new object()))
             throw new InvalidOperationException($"Run {config.RunId} is already active.");
 
@@ -99,7 +99,7 @@ public class PipelineRunnerService(
 
     public async Task RecoverPendingGatesAsync()
     {
-        var pendingGates = await _gateStore.GetAllPendingAsync();
+        var pendingGates = await gateStore.GetAllPendingAsync();
         foreach (var gate in pendingGates)
         {
             var tcs = new TaskCompletionSource<GateResolution>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -107,7 +107,7 @@ public class PipelineRunnerService(
             _activeRuns.TryAdd(gate.RunId, new object());
         }
 
-        var incompleteRuns = await _runStore.GetAllIncompleteAsync();
+        var incompleteRuns = await runStore.GetAllIncompleteAsync();
         foreach (var run in incompleteRuns)
         {
             _activeRuns.TryAdd(run.RunId, new object());
@@ -115,7 +115,7 @@ public class PipelineRunnerService(
 
         foreach (var run in incompleteRuns)
         {
-            var pendingForRun = await _gateStore.GetPendingForRunAsync(run.RunId);
+            var pendingForRun = await gateStore.GetPendingForRunAsync(run.RunId);
             if (pendingForRun.Count == 0)
             {
                 logger.LogInformation("Auto-resuming run {RunId} at stage {Stage}", run.RunId, run.CurrentStage);

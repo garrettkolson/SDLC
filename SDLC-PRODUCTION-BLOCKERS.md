@@ -407,6 +407,8 @@ public async Task RunAsync(...)
 
 **Done when:** Aspire Dashboard / Tempo shows nested spans: `SdlcPipeline.Run` → `SdlcPipeline.Research` → HTTP call to vLLM.
 
+**Resolved:** `WithTracing` registered in `Program.cs:74-77` with `AddSource("SDLC.Pipeline")`. All five stage steps (Research, Requirements, Design, Build, Learn) call `telemetry.StartStageActivity()` in their `RunAsync` bodies via `PipelineTelemetry.cs:61-71`. Spans include `run.id` tag via activity context baggage.
+
 ---
 
 ### P1-11. Cancellation broken
@@ -908,10 +910,10 @@ public async Task ResumeGateAsync(...)
 | 3 Hardening          | 90  | P2-13 SQLite tx |
 | 4 Notifications      | 100 | — |
 | 5 Dashboard          | 100 | — |
-| 6 Observability      | 67  | P1-10 tracing, P2-15 logging |
+| 6 Observability      | 83  | P2-15 logging |
 | 7 Docker             | 60  | P2-14 hardening |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13, P2-17, P1-10.
+**Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13, P2-17.
 
-**Next 3 before scale:** P1-9, P1-10, P2-15.
+**Next 3 before scale:** P1-9, P2-15.

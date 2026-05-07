@@ -1,3 +1,4 @@
+using OpenTelemetry;
 using SDLC.Agents;
 using SDLC.Contracts;
 using SDLC.Dashboard.Components;
@@ -71,6 +72,8 @@ builder.Services.AddSingleton<PipelineRunnerService>();
 builder.Services.AddSingleton<IPipelineRunner>(sp => sp.GetRequiredService<PipelineRunnerService>());
 builder.Services.AddHostedService<PipelineRecoveryHostedService>();
 builder.Services.AddOpenTelemetry()
+    .WithTracing(tracing => tracing
+        .AddSource("SDLC.Pipeline"))
     .WithMetrics(metrics => metrics.AddMeter("SDLC"));
 
 // Simple run service — renders data, resolves gates via StageGateStore

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
 using SDLC.Telemetry;
@@ -19,6 +20,7 @@ public class DesignStep
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        using var activity = telemetry.StartStageActivity(config.RunId, SdlcStage.Design);
         try
         {
             var kernel = kernelFactory.CreateForStage(SdlcStage.Design);
@@ -48,16 +50,20 @@ public class DesignStep
             await artifacts.SaveAsync(record);
             await context.EmitEventAsync(new KernelProcessEvent { Id = SdlcEvents.DesignComplete, Data = record }, ct);
             await telemetry.RecordStepCompletedAsync(SdlcStage.Design, nameof(DesignStep), ct);
+            activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddTag("error.type", ex.GetType().Name);
+            activity?.AddTag("error.message", ex.Message);
             await telemetry.RecordStepFailedAsync(SdlcStage.Design, nameof(DesignStep), ex, ct);
             throw;
         }
         finally
         {
             sw.Stop();
-            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds, 
+            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds,
                 new KeyValuePair<string, object?>[] { new("sdlc.stage", "Design") });
         }
     }

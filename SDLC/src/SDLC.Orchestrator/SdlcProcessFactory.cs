@@ -41,7 +41,6 @@ public class SdlcProcessFactory(
     {
         await runStore.CreateRunAsync(config.RunId, config.ProjectBrief, DateTimeOffset.UtcNow.ToString("o"));
 
-        await telemetry.StartPipelineRunAsync(config.RunId, config.ProjectBrief, ct);
         logger.LogInformation("Pipeline started for run {RunId}", config.RunId);
 
         try
@@ -88,17 +87,14 @@ public class SdlcProcessFactory(
         {
             logger.LogError(ex, "Pipeline failed for run {RunId}", config.RunId);
             await runStore.UpdateStageAsync(config.RunId, "Failed", "Failed");
-            await telemetry.CompletePipelineRunAsync(config.RunId, ct);
             throw;
         }
 
         logger.LogInformation("Pipeline complete for run {RunId}", config.RunId);
-        await telemetry.CompletePipelineRunAsync(config.RunId, ct);
     }
 
     private async Task ResumePipelineAsync(SdlcRunConfig config, string stage, CancellationToken ct)
     {
-        await telemetry.StartPipelineRunAsync(config.RunId, config.ProjectBrief, ct);
         logger.LogInformation("Resuming pipeline for run {RunId} at stage {Stage}", config.RunId, stage);
 
         ResearchBrief? research = null;
@@ -189,12 +185,10 @@ public class SdlcProcessFactory(
         {
             logger.LogError(ex, "Resume pipeline failed for run {RunId}", config.RunId);
             await runStore.UpdateStageAsync(config.RunId, stage, "Failed");
-            await telemetry.CompletePipelineRunAsync(config.RunId, ct);
             throw;
         }
 
         logger.LogInformation("Resume pipeline complete for run {RunId}", config.RunId);
-        await telemetry.CompletePipelineRunAsync(config.RunId, ct);
     }
 
     private async Task WaitForGateWithApprovalAsync(SdlcArtifact artifact, CancellationToken ct)
@@ -212,11 +206,6 @@ public class SdlcProcessFactory(
 
         var resolution = await runner.WaitForGateAsync(gate.GateId, ct);
         await gateStore.ResolveAsync(gate.GateId, resolution.Decision, resolution.Notes, "system", "system");
-
-        if (resolution.Decision == GateDecision.Approved)
-            await telemetry.RecordGateApprovedAsync(gate.GateId, ct: ct);
-        else if (resolution.Decision == GateDecision.Rejected)
-            await telemetry.RecordGateRejectedAsync(gate.GateId, ct: ct);
 
         if (resolution.Decision == GateDecision.Rejected)
             throw new GateRejectedException(gate.GateId, resolution.Notes);

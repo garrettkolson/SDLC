@@ -22,16 +22,9 @@ public interface IKernelProcess
     IProcessRuntime CreateRuntime();
 }
 
-public class ProcessHandle
+public class ProcessHandle(Task runTask)
 {
-    private readonly Task _runTask;
-
-    public ProcessHandle(Task runTask)
-    {
-        _runTask = runTask;
-    }
-
-    public Task Task => _runTask;
+    public Task Task => runTask;
 }
 
 public record GateResolution(Guid GateId, GateDecision Decision, string? Notes);

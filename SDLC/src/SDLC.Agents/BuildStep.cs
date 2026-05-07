@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
@@ -24,6 +25,7 @@ public class BuildStep
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        using var activity = telemetry.StartStageActivity(spec.RunId, SdlcStage.Build);
         try
         {
             var task = new SweAfTask
@@ -73,9 +75,13 @@ public class BuildStep
                 Data = result
             }, ct);
             await telemetry.RecordStepCompletedAsync(SdlcStage.Build, nameof(BuildStep), ct);
+            activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddTag("error.type", ex.GetType().Name);
+            activity?.AddTag("error.message", ex.Message);
             await telemetry.RecordStepFailedAsync(SdlcStage.Build, nameof(BuildStep), ex, ct);
             throw;
         }

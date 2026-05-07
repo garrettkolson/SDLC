@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
 using SDLC.Telemetry;
@@ -17,6 +18,7 @@ public class ResearchStep
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        using var activity = telemetry.StartStageActivity(config.RunId, SdlcStage.Research);
         try
         {
             var kernel = kernelFactory.CreateForStage(SdlcStage.Research);
@@ -49,16 +51,20 @@ public class ResearchStep
                 Data = brief
             }, ct);
             await telemetry.RecordStepCompletedAsync(SdlcStage.Research, nameof(ResearchStep), ct);
+            activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddTag("error.type", ex.GetType().Name);
+            activity?.AddTag("error.message", ex.Message);
             await telemetry.RecordStepFailedAsync(SdlcStage.Research, nameof(ResearchStep), ex, ct);
             throw;
         }
         finally
         {
             sw.Stop();
-            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds, 
+            SdlcTelemetry.StageDuration.Record(sw.ElapsedMilliseconds,
                 new KeyValuePair<string, object?>[] { new("sdlc.stage", "Research") });
         }
     }
