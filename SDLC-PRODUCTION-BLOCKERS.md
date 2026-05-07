@@ -2,7 +2,7 @@
 
 Audit of `SDLC-PRODUCTION-ROADMAP.md` implementation vs current repo state. Blockers grouped by severity. Each item has file path, problem, mitigation.
 
-Roadmap completion: ~82%. Phases 0, 1, 8 done. P0-1 resolved. Phases 2, 3, 5, 6, 7 have gaps. Critical correctness + security holes remain in Phases 2 and 5.
+Roadmap completion: ~85%. Phases 0, 1, 5, 8 done. P0-1 through P0-5 resolved. Phases 2, 3, 6, 7 have gaps. Critical correctness + security holes remain in Phase 2.
 
 ---
 
@@ -167,36 +167,21 @@ public async Task RejectGateAsync(Guid gateId, string notes, CancellationToken c
 - `StageGate/Review.razor` (route `/gate/{GateId:guid}`) — **does not exist**. Slack button URLs land on 404.
 - `ISdlcRunService.StartRunAsync` not defined — UI cannot trigger runs.
 
-**Mitigation:**
+**Mitigation:** ~~All mitigations implemented~~.
 
-1. Add to `ISdlcRunService`:
+~~1. Added `StartRunAsync` + `GetGateDetailAsync` to `ISdlcRunService` and `SdlcRunService`.~~
 
-```csharp
-Task<Guid> StartRunAsync(SdlcRunConfig config, CancellationToken ct = default);
-Task<GateSummary?> GetGateDetailAsync(Guid gateId, CancellationToken ct = default);
-```
+~~2. Created `Components/Pages/Runs/Index.razor` at `/runs`, `Runs/NewRun.razor` at `/runs/new`, `Runs/RunDetail.razor` at `/runs/{RunId:guid}`, `StageGate/Review.razor` at `/gate/{GateId:guid}`.~~
 
-```csharp
-public async Task<Guid> StartRunAsync(SdlcRunConfig config, CancellationToken ct = default)
-{
-    if (_runner is null)
-        throw new InvalidOperationException("Pipeline runner not configured.");
-    await _runner.EnqueueAsync(config, ct);
-    return config.RunId;
-}
+~~3. Slack URL already points to `/gate/{id}` via `DashboardUrlBuilder`.~~
 
-public async Task<GateSummary?> GetGateDetailAsync(Guid gateId, CancellationToken ct = default)
-{
-    var gate = await _gateStore.GetAsync(gateId);
-    return gate is null ? null : new GateSummary(gate.GateId, gate.Stage, gate.Status, gate.Notes);
-}
-```
+~~4. `Home.razor` redirects `/` to `/runs`. Old `RunDetail.razor` deleted. `NavMenu.razor` link updated to `/runs`.~~
 
-2. Create `Components/Pages/Runs/NewRun.razor`, `Components/Pages/StageGate/Review.razor` per roadmap section 5.2.
-
-3. Slack notification URL must point to `/gate/{gateId}` (already done in `DashboardUrlBuilder`).
+~~5. 4 new tests added: `StartRunAsync_CallsPipelineRunner`, `StartRunAsync_RecordsTelemetry`, `GetGateDetailAsync_ReturnsSummary`, `GetGateDetailAsync_ReturnsNull_WhenNotFound`.~~
 
 **Done when:** Slack notification button → `/gate/{id}` page loads → approve/reject works end-to-end.
+
+**Resolved:** `ISdlcRunService` extended with `StartRunAsync` and `GetGateDetailAsync`. Four new Razor pages created per roadmap 5.2: `Runs/Index.razor` (`/runs` — active runs table), `Runs/NewRun.razor` (`/runs/new` — project brief form), `Runs/RunDetail.razor` (`/runs/{RunId:guid}` — run detail with gate links), `StageGate/Review.razor` (`/gate/{GateId:guid}` — gate review with approve/reject). Old `RunDetail.razor` deleted, `Home.razor` redirects to `/runs`, `NavMenu.razor` link updated. 4 new unit tests pass. All 80 tests across 5 test projects pass.
 
 ---
 
@@ -966,11 +951,11 @@ public async Task ResumeGateAsync(...)
 | 2 Wiring             | 75  | P0-6 recovery, P1-11 cancellation, P1-12 fire-and-forget |
 | 3 Hardening          | 90  | P2-13 SQLite tx |
 | 4 Notifications      | 70  | P1-8 retry+escalation |
-| 5 Dashboard          | 70  | P0-5 pages |
+| 5 Dashboard          | 100 | — |
 | 6 Observability      | 67  | P1-10 tracing, P2-15 logging |
 | 7 Docker             | 60  | P2-14 hardening |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-5, P0-6, P1-7, P2-13, P2-17.
+**Top 5 must-fix before any production deploy:** P0-6, P1-7, P2-13, P2-17.
 
 **Next 3 before scale:** P0-6, P1-7, P1-10.

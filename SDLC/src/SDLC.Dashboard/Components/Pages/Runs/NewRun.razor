@@ -1,0 +1,64 @@
+@page "/runs/new"
+@inject NavigationManager Navigation
+@inject SDLC.Dashboard.Services.ISdlcRunService RunService
+
+<PageTitle>SDLC — New Run</PageTitle>
+
+<h2>New SDLC Run</h2>
+
+@if (started)
+{
+    <div class="alert alert-success">
+        Run started. Redirecting...
+    </div>
+}
+else
+{
+    <div class="mb-3">
+        <label for="projectBrief" class="form-label">Project Brief</label>
+        <textarea class="form-control" id="projectBrief" rows="10" @bind="projectBrief"></textarea>
+        <div class="form-text">Describe the project, goals, and any constraints.</div>
+    </div>
+
+    @if (error != null)
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    <button class="btn btn-primary" onclick="@StartRunAsync" disabled="@starting">
+        @if (starting) { <span>Starting...</span> } else { <span>Start Run</span> }
+    </button>
+}
+
+@code {
+    private string projectBrief = "";
+    private bool starting = false;
+    private bool started = false;
+    private string? error;
+
+    private async Task StartRunAsync()
+    {
+        starting = true;
+        error = null;
+
+        try
+        {
+            var config = new SDLC.Contracts.SdlcRunConfig
+            {
+                ProjectBrief = projectBrief
+            };
+
+            var runId = await RunService.StartRunAsync(config);
+            Navigation.NavigateTo($"/runs/{runId}");
+            started = true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Failed to start run: {ex.Message}";
+        }
+        finally
+        {
+            starting = false;
+        }
+    }
+}
