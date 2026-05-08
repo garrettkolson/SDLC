@@ -4,6 +4,7 @@ namespace SDLC.Infrastructure;
 
 public interface IArtifactStore
 {
+    Task InitializeAsync();
     Task SaveAsync(SdlcArtifact artifact);
     Task<T?> GetAsync<T>(Guid artifactId) where T : SdlcArtifact;
     Task<T?> GetLatestForRunAsync<T>(Guid runId) where T : SdlcArtifact;
@@ -15,6 +16,7 @@ public interface IArtifactStore
 
 public interface IStageGateStore
 {
+    Task InitializeAsync();
     Task<StageGate> CreateGateAsync(SdlcArtifact artifact);
     Task<StageGate?> GetAsync(Guid gateId);
     Task ResolveAsync(Guid gateId, GateDecision decision, string? notes, string resolvedById, string resolvedByDisplay);
@@ -24,6 +26,7 @@ public interface IStageGateStore
 
 public interface IRunStore
 {
+    Task InitializeAsync();
     Task CreateRunAsync(Guid runId, string projectBrief, string startedAt);
     Task UpdateStageAsync(Guid runId, string stage, string status);
     Task<RunCheckpoint?> GetRunAsync(Guid runId);

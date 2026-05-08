@@ -92,6 +92,7 @@ public class SdlcRunServiceNewMethodsTests
         private readonly List<SdlcArtifact> _artifacts = new();
         private readonly ConcurrentDictionary<Guid, List<SdlcArtifact>> _byRun = new();
 
+        public Task InitializeAsync() => Task.CompletedTask;
         public void Add(SdlcArtifact artifact)
         {
             _artifacts.Add(artifact);
@@ -118,6 +119,7 @@ public class SdlcRunServiceNewMethodsTests
     {
         public ConcurrentDictionary<Guid, StageGate> Gates { get; } = new();
 
+        public Task InitializeAsync() => Task.CompletedTask;
         public Task<StageGate> CreateGateAsync(SdlcArtifact artifact)
         {
             var gate = new StageGate { RunId = artifact.RunId, Stage = artifact.Stage, Artifact = artifact };
@@ -171,6 +173,7 @@ public class SdlcRunServiceNewMethodsTests
     {
         private readonly ConcurrentDictionary<Guid, RunCheckpoint> _runs = new();
 
+        public Task InitializeAsync() => Task.CompletedTask;
         public Task CancelRunAsync(Guid runId) => Task.CompletedTask;
 
         public Task CreateRunAsync(Guid runId, string projectBrief, string startedAt)

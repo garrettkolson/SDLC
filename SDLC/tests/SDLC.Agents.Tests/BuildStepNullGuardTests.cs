@@ -51,6 +51,7 @@ public class BuildStepNullGuardTests
     private class CapturingArtifactStore : IArtifactStore
     {
         public List<SdlcArtifact> Saved { get; } = new();
+        public Task InitializeAsync() => Task.CompletedTask;
         public Task SaveAsync(SdlcArtifact artifact) { Saved.Add(artifact); return Task.CompletedTask; }
         public Task<T?> GetAsync<T>(Guid artifactId) where T : SdlcArtifact => throw new NotImplementedException();
         public Task<T?> GetLatestForRunAsync<T>(Guid runId) where T : SdlcArtifact => throw new NotImplementedException();

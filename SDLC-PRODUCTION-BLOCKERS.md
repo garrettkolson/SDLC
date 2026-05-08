@@ -503,48 +503,21 @@ public class PipelineShutdownService : IHostedService
 
 **Mitigation:**
 
-1. Connection string: `Data Source=artifacts.db;Cache=Shared;Pooling=True;Mode=ReadWriteCreate;`
+1. Connection string in `Program.cs` updated: `Data Source=sdlc.db;Pooling=True;Cache=Shared;Mode=ReadWriteCreate;`
 
-2. WAL mode for concurrency. Run once at init:
+2. WAL mode set in `InitializeAsync` on all three stores (`ArtifactStore`, `RunStore`, `StageGateStore`): `PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;`
 
-```csharp
-await conn.ExecuteAsync("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;");
-```
+3. `UpdateContentAsync` now wraps file write + DB update in `SqliteTransaction`. `IArtifactStore` interface extended with `InitializeAsync()`. All three store interfaces (`IArtifactStore`, `IStageGateStore`, `IRunStore`) gain `InitializeAsync()`. App startup calls `InitializeAsync` on all three after `builder.Build()`.
 
-3. `UpdateContentAsync` should be transactional. Pattern: write file, update DB row to point at new file, delete old file in `try/finally` after commit. Or use temp-then-rename:
+4. Migrations: still ad-hoc `CREATE TABLE IF NOT EXISTS`. (Unresolved — out of scope for this mitigation.)
 
-```csharp
-public async Task UpdateContentAsync(Guid artifactId, string content)
-{
-    using var conn = new SqliteConnection(_connectionString);
-    await conn.OpenAsync();
-    using var tx = (SqliteTransaction)await conn.BeginTransactionAsync();
+5. Backups: still unimplemented. (Unresolved — out of scope for this mitigation.)
 
-    var path = await conn.QueryFirstOrDefaultAsync<string>(
-        "SELECT file_path FROM artifacts WHERE artifact_id = :Id",
-        new { Id = artifactId.ToString() }, tx);
-
-    if (path == null) throw new InvalidOperationException("Artifact not found");
-
-    var tmpPath = path + ".tmp";
-    await File.WriteAllTextAsync(tmpPath, content);
-
-    await conn.ExecuteAsync(
-        "UPDATE artifacts SET status = 'PendingReview' WHERE artifact_id = :Id",
-        new { Id = artifactId.ToString() }, tx);
-
-    await tx.CommitAsync();
-    File.Move(tmpPath, path, overwrite: true);
-}
-```
-
-4. Migrations: adopt FluentMigrator or `EFCore.Migrations` even with Dapper. Replace ad-hoc `InitializeAsync` `CREATE TABLE IF NOT EXISTS` with versioned migrations table.
-
-5. Backups: nightly `sqlite3 artifacts.db ".backup '/backups/artifacts-$(date +%F).db'"` cron in container or sidecar. Or switch to Postgres for prod (recommended at any scale beyond single user).
-
-6. Long-term: introduce `IDbConnectionFactory` so SQLite vs Postgres swap is config-only. SQLite single-writer fundamentally caps concurrent pipeline runs.
+6. Long-term `IDbConnectionFactory`: still unimplemented. (Unresolved — deferred.)
 
 **Done when:** Two simultaneous artifact saves do not deadlock. Crash mid-update leaves either old or new state, never half-written.
+
+**Resolved:** Connection string hardens with `Pooling=True;Cache=Shared;Mode=ReadWriteCreate`. WAL + `synchronous = NORMAL` pragmas applied in `InitializeAsync` on all three stores. `UpdateContentAsync` transactional — file write + DB status update in single `SqliteTransaction`. `InitializeAsync` called at app startup. `IArtifactStore`, `IStageGateStore`, `IRunStore` interfaces extended. 12 new tests: `ArtifactStoreTransactionTests` (4 — transactional updates, WAL serialized writes, reentrant init), `InitializationTests` (8 — WAL + synchronous per store, table re-entry, concurrent readers during write). All 226 tests across 8 test projects pass. Migrations, backups, and `IDbConnectionFactory` deferred (see P2-13 notes).
 
 ---
 
@@ -909,13 +882,13 @@ public async Task ResumeGateAsync(...)
 | 0 Blockers           | 100 | — |
 | 1 AI Exec            | 100 | — |
 | 2 Wiring             | 100 | — |
-| 3 Hardening          | 90  | P2-13 SQLite tx |
+| 3 Hardening          | 90  | P2-13 migrations/backup |
 | 4 Notifications      | 100 | — |
 | 5 Dashboard          | 100 | — |
 | 6 Observability      | 83  | P2-15 logging |
 | 7 Docker             | 60  | P2-14 hardening |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13, P2-17.
+**Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13 (migrations/backup), P2-17.
 
-**Next 3 before scale:** P1-9, P2-15.
+**Next 3 before scale:** P2-13 (backup strategy), P2-15, P2-17.

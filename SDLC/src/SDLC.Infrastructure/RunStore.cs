@@ -24,6 +24,8 @@ public class RunStore : IRunStore
                 status TEXT NOT NULL DEFAULT 'Running',
                 started_at TEXT NOT NULL
             )");
+        await conn.ExecuteAsync("PRAGMA journal_mode = WAL;");
+        await conn.ExecuteAsync("PRAGMA synchronous = NORMAL;");
     }
 
     public async Task CreateRunAsync(Guid runId, string projectBrief, string startedAt)

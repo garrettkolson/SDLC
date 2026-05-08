@@ -2,6 +2,8 @@ using OpenTelemetry;
 using SDLC.Agents;
 using SDLC.Contracts;
 using SDLC.Dashboard.Components;
+using SDLC.Dashboard.Services;
+using SDLC.Infrastructure;
 using SDLC.Notifications;
 using SDLC.Orchestrator;
 using SDLC.Telemetry;
@@ -14,7 +16,8 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddControllers();
 
-var dbConn = builder.Configuration.GetConnectionString("SDLCDb") ?? "Data Source=sdlc.db";
+var dbConn = builder.Configuration.GetConnectionString("SDLCDb")
+    ?? "Data Source=sdlc.db;Pooling=True;Cache=Shared;Mode=ReadWriteCreate;";
 var artifactDir = Path.Combine(AppContext.BaseDirectory, "artifacts");
 
 builder.Services.AddSingleton<SDLC.Infrastructure.IArtifactStore>(
@@ -87,6 +90,12 @@ builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService>(sp =>
         sp.GetRequiredService<IPipelineRunner>()));
 
 var app = builder.Build();
+
+// Initialize DB — tables + WAL mode
+using var initScope = app.Services.CreateScope();
+await initScope.ServiceProvider.GetRequiredService<IArtifactStore>().InitializeAsync();
+await initScope.ServiceProvider.GetRequiredService<IStageGateStore>().InitializeAsync();
+await initScope.ServiceProvider.GetRequiredService<IRunStore>().InitializeAsync();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

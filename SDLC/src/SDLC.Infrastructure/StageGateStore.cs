@@ -30,6 +30,12 @@ public class StageGateStore : IStageGateStore
                 created_at TEXT NOT NULL
             )", conn);
         await cmd.ExecuteNonQueryAsync();
+
+        // WAL + synchronous pragmas
+        await using var pragmaCmd1 = new Microsoft.Data.Sqlite.SqliteCommand("PRAGMA journal_mode = WAL;", conn);
+        await pragmaCmd1.ExecuteNonQueryAsync();
+        await using var pragmaCmd2 = new Microsoft.Data.Sqlite.SqliteCommand("PRAGMA synchronous = NORMAL;", conn);
+        await pragmaCmd2.ExecuteNonQueryAsync();
     }
 
     public async Task<StageGate> CreateGateAsync(SdlcArtifact artifact)

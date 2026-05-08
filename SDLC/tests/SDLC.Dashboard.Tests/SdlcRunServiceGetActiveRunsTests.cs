@@ -74,6 +74,7 @@ public class SdlcRunServiceGetActiveRunsTests
     private class TestArtifactStore : IArtifactStore
     {
         private readonly List<SdlcArtifact> _artifacts = new();
+        public Task InitializeAsync() => Task.CompletedTask;
         public void Add(SdlcArtifact a) => _artifacts.Add(a);
         public Task SaveAsync(SdlcArtifact artifact) { _artifacts.Add(artifact); return Task.CompletedTask; }
         public Task<T?> GetAsync<T>(Guid id) where T : SdlcArtifact => Task.FromResult(_artifacts.OfType<T>().FirstOrDefault(a => a.ArtifactId == id));
@@ -86,6 +87,7 @@ public class SdlcRunServiceGetActiveRunsTests
 
     private class TestGateStore : IStageGateStore
     {
+        public Task InitializeAsync() => Task.CompletedTask;
         public Task<StageGate> CreateGateAsync(SdlcArtifact artifact) => throw new NotImplementedException();
         public Task<StageGate?> GetAsync(Guid id) => Task.FromResult<StageGate?>(null);
         public Task ResolveAsync(Guid id, GateDecision decision, string? notes, string resolvedById, string resolvedByDisplay) => throw new NotImplementedException();
@@ -105,6 +107,7 @@ public class SdlcRunServiceGetActiveRunsTests
     {
         private readonly ConcurrentDictionary<Guid, RunCheckpoint> _runs = new();
 
+        public Task InitializeAsync() => Task.CompletedTask;
         public Task CancelRunAsync(Guid runId) => Task.CompletedTask;
 
         public Task CreateRunAsync(Guid runId, string projectBrief, string startedAt)
