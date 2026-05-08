@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
 using SDLC.Notifications;
+using SDLC.Orchestrator.Logging;
 using SDLC.Telemetry;
 
 namespace SDLC.Orchestrator;
@@ -63,6 +64,8 @@ public class PipelineRunnerService(
 
     public virtual async Task EnqueueAsync(SdlcRunConfig config, CancellationToken ct = default)
     {
+        using var _logScope = LogScope.ForRun(config.RunId);
+
         using var runActivity = telemetry.StartRunActivity(config.RunId);
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -82,6 +85,8 @@ public class PipelineRunnerService(
 
         _ = handle.Task.ContinueWith(async t =>
         {
+            using var runScope = LogScope.ForRun(config.RunId);
+
             _activeRuns.TryRemove(config.RunId, out _);
             _runCancellation.TryRemove(config.RunId, out _);
             cts.Dispose();
@@ -109,6 +114,9 @@ public class PipelineRunnerService(
 
     public virtual async Task ResumeGateAsync(Guid runId, Guid gateId, GateDecision decision, string? notes, CancellationToken ct = default)
     {
+        using var runScope = LogScope.ForRun(runId);
+        using var gateScope = LogScope.ForGate(gateId);
+
         if (!_activeRuns.ContainsKey(runId))
             throw new InvalidOperationException($"No active run for {runId}");
 
@@ -165,6 +173,8 @@ public class PipelineRunnerService(
         var handle = processFactory.ResumeAsync(config, run.CurrentStage, cts.Token);
         _ = handle.Task.ContinueWith(async t =>
         {
+            using var runScope = LogScope.ForRun(run.RunId);
+
             _activeRuns.TryRemove(run.RunId, out _);
             _runCancellation.TryRemove(run.RunId, out _);
             cts.Dispose();

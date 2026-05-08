@@ -1,4 +1,6 @@
 using OpenTelemetry;
+using Serilog;
+using Serilog.Events;
 using SDLC.Agents;
 using SDLC.Contracts;
 using SDLC.Dashboard.Components;
@@ -9,6 +11,27 @@ using SDLC.Orchestrator;
 using SDLC.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Serilog — structured logging with console + OpenTelemetry sinks
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Service", "SDLC.Dashboard")
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.OpenTelemetry(opts =>
+    {
+        opts.ResourceAttributes = new Dictionary<string, object>
+        {
+            ["service.name"] = "SDLC.Dashboard",
+            ["service.version"] = "1.0.0"
+        };
+    })
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()

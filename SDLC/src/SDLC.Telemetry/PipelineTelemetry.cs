@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text.Json;
 using SDLC.Contracts;
 
@@ -20,7 +21,7 @@ public record GateEvent(
 
 public record PipelineEvent(
     Guid RunId,
-    string? ProjectBrief,
+    string? ProjectBriefHash,
     DateTimeOffset Started,
     DateTimeOffset? Ended);
 
@@ -96,7 +97,14 @@ public class PipelineTelemetry : IPipelineTelemetry
     public async Task StartPipelineRunAsync(Guid runId, string projectBrief, CancellationToken ct = default)
     {
         SdlcTelemetry.RunsStarted.Add(1);
-        _pipelineEvents.Enqueue(new PipelineEvent(runId, projectBrief, DateTimeOffset.UtcNow, null));
+        _pipelineEvents.Enqueue(new PipelineEvent(runId, HashProjectBrief(projectBrief), DateTimeOffset.UtcNow, null));
+    }
+
+    public static string HashProjectBrief(string brief)
+    {
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(brief));
+        return Convert.ToHexStringLower(hash)[..16];
     }
 
     public async Task CompletePipelineRunAsync(Guid runId, CancellationToken ct = default)

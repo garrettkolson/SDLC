@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using SDLC.Agents;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
+using SDLC.Orchestrator.Logging;
 using SDLC.Notifications;
 using SDLC.Telemetry;
 
@@ -39,6 +40,8 @@ public class SdlcProcessFactory(
 
     private async Task RunPipelineAsync(SdlcRunConfig config, CancellationToken ct)
     {
+        using var runScope = LogScope.ForRun(config.RunId);
+
         await runStore.CreateRunAsync(config.RunId, config.ProjectBrief, DateTimeOffset.UtcNow.ToString("o"));
 
         logger.LogInformation("Pipeline started for run {RunId}", config.RunId);
@@ -95,6 +98,9 @@ public class SdlcProcessFactory(
 
     private async Task ResumePipelineAsync(SdlcRunConfig config, string stage, CancellationToken ct)
     {
+        using var runScope = LogScope.ForRun(config.RunId);
+        using var stageScope = LogScope.ForStage(stage);
+
         logger.LogInformation("Resuming pipeline for run {RunId} at stage {Stage}", config.RunId, stage);
 
         ResearchBrief? research = null;

@@ -626,52 +626,23 @@ sdlc.example.com {
 - Default `ILogger`, no Serilog
 - No log scopes for `RunId / GateId / Stage`
 - Console-only sink
-- `ProjectBrief` logged plaintext in `StartPipelineRunAsync` — PII/IP leak
+- `ProjectBrief` stored plaintext in `PipelineTelemetry.StartPipelineRunAsync` — PII/IP leak
 
-**Mitigation:**
+**Resolved:**
 
-1. Add Serilog + sinks:
+| File | Change |
+|------|--------|
+| `SDLC/src/SDLC.Dashboard/SDLC.Dashboard.csproj` | Added `Serilog` 4.2, `Serilog.AspNetCore` 9.0, `Serilog.Sinks.Console` 6.0, `Serilog.Sinks.OpenTelemetry` 4.1 |
+| `SDLC/src/SDLC.Orchestrator/SDLC.Orchestrator.csproj` | Added `Serilog` 4.2 for `LogContext` |
+| `SDLC/src/SDLC.Orchestrator/Logging/LogScope.cs` | New — static helper: `ForRun(Guid)`, `ForGate(Guid)`, `ForStage(string)` via `LogContext.PushProperty` |
+| `SDLC/src/SDLC.Dashboard/Program.cs` | Serilog logger configured: `MinimumLevel.Information`, Microsoft/System overrides to Warning, `Enrich.FromLogContext()`, `Enrich.WithProperty("Service", "SDLC.Dashboard")`, Console sink with template, OpenTelemetry sink with resource attributes, `builder.Host.UseSerilog()` |
+| `SDLC/src/SDLC.Orchestrator/SdlcProcessFactory.cs` | `RunPipelineAsync` wrapped with `LogScope.ForRun(config.RunId)`; `ResumePipelineAsync` with `ForRun` + `ForStage` |
+| `SDLC/src/SDLC.Orchestrator/SdlcProcess.cs` | `EnqueueAsync` with `LogScope.ForRun`; `ResumeGateAsync` with `ForRun` + `ForGate`; both `ContinueWith` callbacks (EnqueueAsync, ResumeRunAsync) each get own `LogScope.ForRun` |
+| `SDLC/src/SDLC.Telemetry/PipelineTelemetry.cs` | `PipelineEvent.ProjectBrief` renamed to `ProjectBriefHash`; `StartPipelineRunAsync` stores SHA-256 hash (first 16 hex chars) instead of plaintext; `HashProjectBrief` method added |
+| `SDLC/tests/SDLC.Telemetry.Tests/SDLC.TelemetryTests.csproj` | Added `InternalsVisibleTo` |
+| `SDLC/tests/SDLC.Telemetry.Tests/PipelineTelemetryTests.cs` | Updated assertion for `ProjectBriefHash` |
 
-```xml
-<PackageReference Include="Serilog.AspNetCore" Version="8.*" />
-<PackageReference Include="Serilog.Sinks.OpenTelemetry" Version="*" />
-<PackageReference Include="Serilog.Enrichers.Span" Version="*" />
-```
-
-```csharp
-builder.Host.UseSerilog((ctx, sp, config) => config
-    .ReadFrom.Configuration(ctx.Configuration)
-    .Enrich.FromLogContext()
-    .Enrich.WithSpan()
-    .Enrich.WithProperty("Service", "SDLC.Dashboard")
-    .WriteTo.Console(new CompactJsonFormatter())
-    .WriteTo.OpenTelemetry(o => o.Endpoint = otlpEndpoint));
-```
-
-2. Replace plain `_logger.LogX` calls in pipeline with scopes:
-
-```csharp
-using (_logger.BeginScope(new Dictionary<string, object>
-{
-    ["RunId"] = config.RunId,
-    ["Stage"] = stage
-}))
-{
-    _logger.LogInformation("Starting stage");
-}
-```
-
-3. Strip `ProjectBrief` from logs. Log a hash or first 64 chars only:
-
-```csharp
-_logger.LogInformation("Run started. BriefHash={Hash} BriefLength={Len}",
-    Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(config.ProjectBrief)))[..16],
-    config.ProjectBrief.Length);
-```
-
-4. Add `[LogProperty(Redact = true)]`-style sentinel or wrap `ProjectBrief` in a `Sensitive<string>` type whose `ToString()` returns redaction marker.
-
-**Done when:** Log entries include `RunId`, `Stage`, `traceId`. No `ProjectBrief` plaintext in any sink.
+**Done when:** Log entries include `RunId`, `Stage`, `traceId` scope properties. `PipelineEvent.ProjectBrief` stores SHA-256 hash (16-char prefix), never plaintext. All 218 tests across 8 projects pass.
 
 ---
 
@@ -887,10 +858,10 @@ public async Task ResumeGateAsync(...)
 | 3 Hardening          | 95  | P2-13 migrations/backup |
 | 4 Notifications      | 100 | — |
 | 5 Dashboard          | 100 | — |
-| 6 Observability      | 83  | P2-15 logging |
+| 6 Observability      | 90  | P2-16 token budget, P2-17 secrets |
 | 7 Docker             | 85  | TLS/reverse proxy |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13 (migrations/backup), P2-17.
+**Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13 (migrations/backup), P2-16, P2-17.
 
-**Next 3 before scale:** P2-13 (backup strategy), P2-15, P2-17.
+**Next 3 before scale:** P2-13 (backup strategy), P2-16, P2-17.
