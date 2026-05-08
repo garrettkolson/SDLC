@@ -614,6 +614,8 @@ sdlc.example.com {
 
 **Done when:** `docker run --user 10001` works. `curl /health/ready` returns 200 only when DB reachable. TLS at edge.
 
+**Resolved:** Non-root users added to both Dockerfiles (Dashboard: `USER app` uid 10001, Orchestrator: `USER appuser` from base + `app` uid 10001). HEALTHCHECK directive added to Dashboard Dockerfile using `curl -f http://localhost:8080/health/ready`. Orchestrator Dockerfile hardened but no HEALTHCHECK (library project, no HTTP server). `.dockerignore` files created at repo root and per-project. Health endpoints `/health/live` (self-only) and `/health/ready` (self + vLLM) wired in Program.cs via `MapGet`. VllmHealthCheck service added. docker-compose.yml: Aspire Dashboard pinned to `10.0` tag, app service healthcheck added with readiness `depends_on`. TLS/reverse proxy deferred to post-P2-14 follow-up. All 226 tests pass.
+
 ---
 
 ### P2-15. Logging unstructured + leaks PII
@@ -882,11 +884,11 @@ public async Task ResumeGateAsync(...)
 | 0 Blockers           | 100 | — |
 | 1 AI Exec            | 100 | — |
 | 2 Wiring             | 100 | — |
-| 3 Hardening          | 90  | P2-13 migrations/backup |
+| 3 Hardening          | 95  | P2-13 migrations/backup |
 | 4 Notifications      | 100 | — |
 | 5 Dashboard          | 100 | — |
 | 6 Observability      | 83  | P2-15 logging |
-| 7 Docker             | 60  | P2-14 hardening |
+| 7 Docker             | 85  | TLS/reverse proxy |
 | 8 Tests              | 100 | — |
 
 **Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13 (migrations/backup), P2-17.

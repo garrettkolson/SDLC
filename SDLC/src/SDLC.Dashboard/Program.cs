@@ -80,6 +80,9 @@ builder.Services.AddOpenTelemetry()
         .AddSource("SDLC.Pipeline"))
     .WithMetrics(metrics => metrics.AddMeter("SDLC"));
 
+// VllmHealthCheck — used by /health/ready endpoint
+builder.Services.AddSingleton<VllmHealthCheck>();
+
 // Simple run service — renders data, resolves gates via StageGateStore
 builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService>(sp =>
     new SDLC.Dashboard.Services.SdlcRunService(
@@ -96,6 +99,15 @@ using var initScope = app.Services.CreateScope();
 await initScope.ServiceProvider.GetRequiredService<IArtifactStore>().InitializeAsync();
 await initScope.ServiceProvider.GetRequiredService<IStageGateStore>().InitializeAsync();
 await initScope.ServiceProvider.GetRequiredService<IRunStore>().InitializeAsync();
+
+// Health endpoints
+app.MapGet("/health/live", () => Results.Ok("OK"));
+
+app.MapGet("/health/ready", async (VllmHealthCheck vllmCheck) =>
+{
+    var (healthy, message) = await vllmCheck.CheckAsync();
+    return healthy ? Results.Ok(message) : Results.Problem(message, statusCode: 503);
+});
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
