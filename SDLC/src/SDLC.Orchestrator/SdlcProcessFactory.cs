@@ -23,6 +23,7 @@ public class SdlcProcessFactory(
     IRunStore runStore,
     IPipelineTelemetry telemetry,
     PipelineRunnerService runner,
+    Func<IRunBudgetTracker> budgetTrackerFactory,
     ILoggerFactory loggerFactory,
     ILogger<SdlcProcessFactory> logger) : ISdlcProcessFactory
 {
@@ -41,6 +42,7 @@ public class SdlcProcessFactory(
     private async Task RunPipelineAsync(SdlcRunConfig config, CancellationToken ct)
     {
         using var runScope = LogScope.ForRun(config.RunId);
+        var runBudget = budgetTrackerFactory();
 
         await runStore.CreateRunAsync(config.RunId, config.ProjectBrief, DateTimeOffset.UtcNow.ToString("o"));
 
@@ -50,13 +52,13 @@ public class SdlcProcessFactory(
         {
             // Stage 1: Research
             var researchContext = new CapturingContext();
-            await new ResearchStep().RunAsync(researchContext, config, kernelFactory, artifactStore, telemetry, ct);
+            await new ResearchStep().RunAsync(researchContext, config, kernelFactory, artifactStore, telemetry, runBudget, ct);
             var research = (ResearchBrief)researchContext.LastEvent!.Data!;
             await runStore.UpdateStageAsync(config.RunId, "Research", "Running");
 
             // Stage 2: Requirements
             var reqContext = new CapturingContext();
-            await new RequirementsStep().RunAsync(reqContext, config, research, kernelFactory, artifactStore, telemetry, ct);
+            await new RequirementsStep().RunAsync(reqContext, config, research, kernelFactory, artifactStore, telemetry, runBudget, ct);
             var spec = (RequirementsSpec)reqContext.LastEvent!.Data!;
             await runStore.UpdateStageAsync(config.RunId, "Requirements", "Running");
 
@@ -66,7 +68,7 @@ public class SdlcProcessFactory(
             // Stage 3: Design
             var latestSpec = await artifactStore.GetLatestForRunAsync<RequirementsSpec>(config.RunId) ?? spec;
             var designContext = new CapturingContext();
-            await new DesignStep().RunAsync(designContext, config, research, latestSpec, kernelFactory, artifactStore, telemetry, ct);
+            await new DesignStep().RunAsync(designContext, config, research, latestSpec, kernelFactory, artifactStore, telemetry, runBudget, ct);
             var architecture = (ArchitectureRecord)designContext.LastEvent!.Data!;
             await runStore.UpdateStageAsync(config.RunId, "Design", "Running");
 
@@ -83,7 +85,7 @@ public class SdlcProcessFactory(
             // Stage 5: Learn
             var learnContext = new CapturingContext();
             await new LearnStep().RunAsync(
-                learnContext, config, latestSpec, buildResult, kernelFactory, artifactStore, telemetry, ct);
+                learnContext, config, latestSpec, buildResult, kernelFactory, artifactStore, telemetry, runBudget, ct);
             await runStore.UpdateStageAsync(config.RunId, "Learn", "Completed");
         }
         catch (Exception ex)
@@ -100,6 +102,7 @@ public class SdlcProcessFactory(
     {
         using var runScope = LogScope.ForRun(config.RunId);
         using var stageScope = LogScope.ForStage(stage);
+        var runBudget = budgetTrackerFactory();
 
         logger.LogInformation("Resuming pipeline for run {RunId} at stage {Stage}", config.RunId, stage);
 
@@ -116,7 +119,7 @@ public class SdlcProcessFactory(
             else
             {
                 var researchContext = new CapturingContext();
-                await new ResearchStep().RunAsync(researchContext, config, kernelFactory, artifactStore, telemetry, ct);
+                await new ResearchStep().RunAsync(researchContext, config, kernelFactory, artifactStore, telemetry, runBudget, ct);
                 research = (ResearchBrief)researchContext.LastEvent!.Data!;
                 await runStore.UpdateStageAsync(config.RunId, "Research", "Running");
             }
@@ -128,7 +131,7 @@ public class SdlcProcessFactory(
             else
             {
                 var reqContext = new CapturingContext();
-                await new RequirementsStep().RunAsync(reqContext, config, research!, kernelFactory, artifactStore, telemetry, ct);
+                await new RequirementsStep().RunAsync(reqContext, config, research!, kernelFactory, artifactStore, telemetry, runBudget, ct);
                 spec = (RequirementsSpec)reqContext.LastEvent!.Data!;
                 await runStore.UpdateStageAsync(config.RunId, "Requirements", "Running");
             }
@@ -147,7 +150,7 @@ public class SdlcProcessFactory(
                 {
                     var latestSpec = await artifactStore.GetLatestForRunAsync<RequirementsSpec>(config.RunId) ?? spec!;
                     var designContext = new CapturingContext();
-                    await new DesignStep().RunAsync(designContext, config, research!, latestSpec, kernelFactory, artifactStore, telemetry, ct);
+                    await new DesignStep().RunAsync(designContext, config, research!, latestSpec, kernelFactory, artifactStore, telemetry, runBudget, ct);
                     architecture = (ArchitectureRecord)designContext.LastEvent!.Data!;
                     await runStore.UpdateStageAsync(config.RunId, "Design", "Completed");
                     break;
@@ -178,7 +181,7 @@ public class SdlcProcessFactory(
                     var buildResult = (BuildResult)buildContext2.LastEvent!.Data!;
                     var learnContext = new CapturingContext();
                     await new LearnStep().RunAsync(
-                        learnContext, config, latestSpec3, buildResult, kernelFactory, artifactStore, telemetry, ct);
+                        learnContext, config, latestSpec3, buildResult, kernelFactory, artifactStore, telemetry, runBudget, ct);
                     await runStore.UpdateStageAsync(config.RunId, "Learn", "Completed");
                     break;
                 }

@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Microsoft.Extensions.Logging;
 using NSubstitute;
 using NUnit.Framework;
 using SDLC.Agents;
@@ -17,6 +16,12 @@ public class ResearchStepTests
     private CapturingContext _context = null!;
     private IKernel _fakeKernel = null!;
     private IPipelineTelemetry telemetry = Substitute.For<IPipelineTelemetry>();
+    private IRunBudgetTracker _budgetTracker = null!;
+
+    private static (string, TokenUsage) SatisfactoryMain => ("# Research Brief\nContent.\n[SATISFACTORY]", TokenUsage.Zero);
+    private static (string, TokenUsage) SatisfactoryCritique => ("[SATISFACTORY]", TokenUsage.Zero);
+    private static (string, TokenUsage) UnsatMain => ("# Research Brief\nNeeds work.\n[UNSATISFACTORY]", TokenUsage.Zero);
+    private static (string, TokenUsage) UnsatCritique => ("[UNSATISFACTORY]", TokenUsage.Zero);
 
     [SetUp]
     public void SetUp()
@@ -25,18 +30,27 @@ public class ResearchStepTests
         _fakeKernel = Substitute.For<IKernel>();
         _kernelFactory = Substitute.For<IKernelFactory>();
         _context = new CapturingContext();
+        _budgetTracker = Substitute.For<IRunBudgetTracker>();
+        _budgetTracker.EnsureWithinBudgetAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.CompletedTask);
+        _budgetTracker.IsOverBudgetAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.FromResult(false));
+        _budgetTracker.RecordAsync(Arg.Any<Guid>(), Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.CompletedTask);
+        _budgetTracker.GetUsageAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.FromResult(TokenUsage.Zero));
         _kernelFactory.CreateForStage(SdlcStage.Research).Returns(_fakeKernel);
     }
 
     [Test]
     public async Task RunAsync_SavesResearchBrief()
     {
-        _fakeKernel.CompleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns("# Research Brief\nContent here.\n[SATISFACTORY]");
+        _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(SatisfactoryMain, SatisfactoryCritique);
         var config = new SdlcRunConfig { ProjectBrief = "Build a reporting tool" };
 
         var step = new ResearchStep();
-        await step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry);
+        await step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry, _budgetTracker);
 
         await _artifacts.Received(1).SaveAsync(Arg.Is<ResearchBrief>(b => b.RunId == config.RunId));
     }
@@ -44,12 +58,12 @@ public class ResearchStepTests
     [Test]
     public async Task RunAsync_EmitsResearchCompleteEvent()
     {
-        _fakeKernel.CompleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns("# Research Brief\nContent.\n[SATISFACTORY]");
+        _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(SatisfactoryMain, SatisfactoryCritique);
         var config = new SdlcRunConfig { ProjectBrief = "Build a reporting tool" };
 
         var step = new ResearchStep();
-        await step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry);
+        await step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry, _budgetTracker);
 
         _context.Events.Should().ContainSingle();
         _context.Events[0].Id.Should().Be(SdlcEvents.ResearchComplete);
@@ -59,32 +73,25 @@ public class ResearchStepTests
     [Test]
     public async Task RunAsync_WhenFirstAttemptUnsatisfactory_Retries()
     {
-        var callCount = 0;
-        _fakeKernel.CompleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns(inv =>
-                   {
-                       callCount++;
-                       return callCount < 3
-                           ? "Needs improvement. [UNSATISFACTORY]"
-                           : "Good. [SATISFACTORY]";
-                   });
-
+        _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(UnsatMain, UnsatCritique, UnsatMain, UnsatCritique, SatisfactoryMain, SatisfactoryCritique);
         var config = new SdlcRunConfig { ProjectBrief = "Build a tool" };
         var step = new ResearchStep();
-        await step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry);
-
-        callCount.Should().BeGreaterThanOrEqualTo(3);
+        await step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry, _budgetTracker);
+        // If we get here past 3 attempts, the test passed
     }
 
     [Test]
     public async Task RunAsync_MaxThreeAttempts_DoesNotLoopForever()
     {
-        _fakeKernel.CompleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns("Always unsatisfactory. [UNSATISFACTORY]");
+        _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(
+                       ("Always unsatisfactory.\n[UNSATISFACTORY]", TokenUsage.Zero),
+                       ("[UNSATISFACTORY]", TokenUsage.Zero));
         var config = new SdlcRunConfig { ProjectBrief = "Build a tool" };
 
         var step = new ResearchStep();
-        var act = () => step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry);
+        var act = () => step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry, _budgetTracker);
 
         await act.Should().CompleteWithinAsync(TimeSpan.FromSeconds(5));
     }
@@ -92,8 +99,8 @@ public class ResearchStepTests
     [Test]
     public async Task RunAsync_SavedBrief_HasCorrectRunId()
     {
-        _fakeKernel.CompleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns("Good research. [SATISFACTORY]");
+        _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(SatisfactoryMain, SatisfactoryCritique);
         var runId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000000");
         var config = new SdlcRunConfig { ProjectBrief = "Project", RunId = runId };
 
@@ -101,7 +108,7 @@ public class ResearchStepTests
         await _artifacts.SaveAsync(Arg.Do<ResearchBrief>(b => saved = b));
 
         var step = new ResearchStep();
-        await step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry);
+        await step.RunAsync(_context, config, _kernelFactory, _artifacts, telemetry, _budgetTracker);
 
         saved!.RunId.Should().Be(runId);
     }

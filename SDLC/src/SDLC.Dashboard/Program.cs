@@ -51,6 +51,9 @@ builder.Services.AddSingleton<SDLC.Infrastructure.RunStore>(
     new SDLC.Infrastructure.RunStore(dbConn));
 builder.Services.AddSingleton<SDLC.Infrastructure.IRunStore>(sp => sp.GetRequiredService<SDLC.Infrastructure.RunStore>());
 
+var tokenBudget = (long)(builder.Configuration.GetValue<int?>("Sdlc:TokenBudget:MaxTokensPerRun") ?? 500_000);
+builder.Services.AddSingleton<Func<IRunBudgetTracker>>(sp => () => new RunBudgetTracker(tokenBudget));
+
 // HTTP client and notification service
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient<ISweAfClient>((sp, http) =>

@@ -17,6 +17,7 @@ public class DesignStep
         IKernelFactory kernelFactory,
         IArtifactStore artifacts,
         IPipelineTelemetry telemetry,
+        IRunBudgetTracker budgetTracker,
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -31,18 +32,28 @@ public class DesignStep
 
             for (var attempt = 0; attempt < MaxAttempts; attempt++)
             {
-                var response = await kernel.CompleteAsync(DesignPrompts.SystemPrompt, string.Join("\n", history), ct);
+                await budgetTracker.EnsureWithinBudgetAsync(config.RunId, ct);
+
+                var (response, usage) = await kernel.CompleteAsyncWithUsage(DesignPrompts.SystemPrompt, string.Join("\n", history), ct);
                 lastAiResponse = response;
                 history.Add($"AI: {response}");
+                await budgetTracker.RecordAsync(config.RunId, usage.PromptTokens, usage.CompletionTokens, ct);
+                await telemetry.RecordTokenUsageAsync(config.RunId, usage.PromptTokens, usage.CompletionTokens, ct);
 
-                var critique = await kernel.CompleteAsync(DesignPrompts.CritiquePrompt, response, ct);
-
-                if (DesignPrompts.IsSatisfactory(critique))
+                var (critiqueResponse, critiqueUsage) = await kernel.CompleteAsyncWithUsage(DesignPrompts.CritiquePrompt, response, ct);
+                if (DesignPrompts.IsSatisfactory(critiqueResponse))
                 {
                     record = new ArchitectureRecord { Content = response, RunId = config.RunId, Stage = SdlcStage.Design };
                     break;
                 }
-                history.Add($"Critique: {critique}");
+                history.Add($"Critique: {critiqueResponse}");
+                await budgetTracker.RecordAsync(config.RunId, critiqueUsage.PromptTokens, critiqueUsage.CompletionTokens, ct);
+                await telemetry.RecordTokenUsageAsync(config.RunId, critiqueUsage.PromptTokens, critiqueUsage.CompletionTokens, ct);
+
+                if (await budgetTracker.IsOverBudgetAsync(config.RunId, ct))
+                {
+                    history = HistoryTruncator.Apply(history);
+                }
             }
 
             record ??= new ArchitectureRecord { Content = lastAiResponse, RunId = config.RunId, Stage = SdlcStage.Design };

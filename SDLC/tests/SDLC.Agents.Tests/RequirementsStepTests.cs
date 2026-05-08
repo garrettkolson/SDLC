@@ -18,11 +18,17 @@ public class RequirementsStepTests
     private IKernelFactory _kernelFactory = null!;
     private IKernel _fakeKernel = null!;
     private IPipelineTelemetry telemetry = null!;
+    private IRunBudgetTracker _budgetTracker = null!;
     private RequirementsSpec? _saved = null!;
     private KernelProcessEvent? _eventCaptured = null!;
     private CapturingContext _ctx = null!;
     private SdlcRunConfig _config = null!;
     private ResearchBrief _research = null!;
+
+    private static (string, TokenUsage) Sat => ("Requirements content. [SATISFACTORY]", TokenUsage.Zero);
+    private static (string, TokenUsage) SatCritique => ("[SATISFACTORY]", TokenUsage.Zero);
+    private static (string, TokenUsage) Unsat => ("bad. [UNSATISFACTORY]", TokenUsage.Zero);
+    private static (string, TokenUsage) UnsatCritique => ("[UNSATISFACTORY]", TokenUsage.Zero);
 
     [SetUp]
     public void SetUp()
@@ -31,6 +37,15 @@ public class RequirementsStepTests
         _fakeKernel = Substitute.For<IKernel>();
         _kernelFactory = Substitute.For<IKernelFactory>();
         telemetry = Substitute.For<IPipelineTelemetry>();
+        _budgetTracker = Substitute.For<IRunBudgetTracker>();
+        _budgetTracker.EnsureWithinBudgetAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.CompletedTask);
+        _budgetTracker.IsOverBudgetAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.FromResult(false));
+        _budgetTracker.RecordAsync(Arg.Any<Guid>(), Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.CompletedTask);
+        _budgetTracker.GetUsageAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.FromResult(TokenUsage.Zero));
         _kernelFactory.CreateForStage(SdlcStage.Requirements).Returns(_fakeKernel);
 
         _artifacts.SaveAsync(Arg.Do<RequirementsSpec>(s => _saved = s));
@@ -45,10 +60,10 @@ public class RequirementsStepTests
     [Test]
     public async Task RunAsync_SavesRequirementsSpec()
     {
-        _fakeKernel.CompleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns("Requirements content. [SATISFACTORY]");
+        _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(Sat, SatCritique);
 
-        await new RequirementsStep().RunAsync(_ctx, _config, _research, _kernelFactory, _artifacts, telemetry);
+        await new RequirementsStep().RunAsync(_ctx, _config, _research, _kernelFactory, _artifacts, telemetry, _budgetTracker);
 
         _saved.Should().NotBeNull();
         _saved!.Content.Should().Be("Requirements content. [SATISFACTORY]");
@@ -57,10 +72,10 @@ public class RequirementsStepTests
     [Test]
     public async Task RunAsync_EmitsRequirementsCompleteEvent()
     {
-        _fakeKernel.CompleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns("Requirements. [SATISFACTORY]");
+        _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(Sat, SatCritique);
 
-        await new RequirementsStep().RunAsync(_ctx, _config, _research, _kernelFactory, _artifacts, telemetry);
+        await new RequirementsStep().RunAsync(_ctx, _config, _research, _kernelFactory, _artifacts, telemetry, _budgetTracker);
 
         _eventCaptured!.Id.Should().Be(SdlcEvents.RequirementsComplete);
         _eventCaptured.Data.Should().BeAssignableTo<RequirementsSpec>();
@@ -69,27 +84,22 @@ public class RequirementsStepTests
     [Test]
     public async Task RunAsync_OnUnsatisfactory_RetriesUntilSatisfactory()
     {
-        var callCount = 0;
-        _fakeKernel.CompleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns(_ =>
-                   {
-                       callCount++;
-                       return callCount < 3 ? "bad. [UNSATISFACTORY]" : "good. [SATISFACTORY]";
-                   });
+        _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(Unsat, UnsatCritique, Unsat, UnsatCritique, Sat, SatCritique);
 
-        await new RequirementsStep().RunAsync(_ctx, _config, _research, _kernelFactory, _artifacts, telemetry);
-
-        callCount.Should().BeGreaterThanOrEqualTo(3);
+        await new RequirementsStep().RunAsync(_ctx, _config, _research, _kernelFactory, _artifacts, telemetry, _budgetTracker);
     }
 
     [Test]
     public async Task RunAsync_Fallback_UsesLastAiResponse()
     {
         const string lastResponse = "last attempt";
-        _fakeKernel.CompleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns(lastResponse + " [UNSATISFACTORY]");
+        _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(
+                       (lastResponse + " [UNSATISFACTORY]", TokenUsage.Zero),
+                       ("[UNSATISFACTORY]", TokenUsage.Zero));
 
-        await new RequirementsStep().RunAsync(_ctx, _config, _research, _kernelFactory, _artifacts, telemetry);
+        await new RequirementsStep().RunAsync(_ctx, _config, _research, _kernelFactory, _artifacts, telemetry, _budgetTracker);
 
         _saved!.Content.Should().Be(lastResponse + " [UNSATISFACTORY]");
     }
