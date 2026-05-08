@@ -486,7 +486,7 @@ public class PipelineShutdownService : IHostedService
 
 **Done when:** Ctrl-C during pipeline run waits up to 30s for stages to finish, then logs partial completion to DB.
 
----
+**Resolved:** `PipelineShutdownService : IHostedService` created in `SDLC.Orchestrator`. On `ApplicationStopping`, awaits all in-flight tasks for up to 30s, then persists `"Failed"` state via `IRunStore` for each run. `PipelineRunnerService.AllInFlightTasks()` exposed — tracks `ConcurrentDictionary<Guid, Task>` (replaced `Guid, object` sentinel dict). Both `ContinueWith` blocks (EnqueueAsync + ResumeRunAsync) now call `runStore.UpdateStageAsync` before telemetry. `_activeRuns` type changed from `<Guid, object>` to `<Guid, Task>` to enable task tracking. 6 new tests: `EnqueueAsync_StoresTaskNotSentinel`, `AllInFlightTasks_ReturnsInProgressTasks`, `AllInFlightTasks_ExcludesCompletedTasks`, `AllInFlightTasks_Empty_WhenNoRuns`, `ShutdownService_AwaitsInFlightTasksAndPersistsFailedState`, `ShutdownService_NoInFlightTasks_ReturnsEarly`. All 115 tests across 8 test projects pass.
 
 ## P2 — Infrastructure Gaps
 
@@ -908,7 +908,7 @@ public async Task ResumeGateAsync(...)
 |-------|-------|------------|
 | 0 Blockers           | 100 | — |
 | 1 AI Exec            | 100 | — |
-| 2 Wiring             | 88  | P1-12 fire-and-forget |
+| 2 Wiring             | 100 | — |
 | 3 Hardening          | 90  | P2-13 SQLite tx |
 | 4 Notifications      | 100 | — |
 | 5 Dashboard          | 100 | — |
