@@ -45,7 +45,7 @@ public class PipelineRunnerService(
     IRunStore runStore)
     : IPipelineRunner
 {
-    private readonly ConcurrentDictionary<Guid, object> _activeRuns = new();
+    private readonly ConcurrentDictionary<Guid, Task> _activeRuns = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _runCancellation = new();
     private readonly ConcurrentDictionary<Guid, TaskCompletionSource<GateResolution>> _pendingGates = new();
 
@@ -65,21 +65,40 @@ public class PipelineRunnerService(
     {
         using var runActivity = telemetry.StartRunActivity(config.RunId);
 
-        if (!_activeRuns.TryAdd(config.RunId, new object()))
-            throw new InvalidOperationException($"Run {config.RunId} is already active.");
-
-        logger.LogInformation("Starting SDLC run {RunId}", config.RunId);
-        await telemetry.StartPipelineRunAsync(config.RunId, config.ProjectBrief, ct);
-
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _runCancellation[config.RunId] = cts;
 
         var handle = processFactory.StartAsync(config, cts.Token);
+
+        if (!_activeRuns.TryAdd(config.RunId, handle.Task))
+        {
+            _runCancellation.TryRemove(config.RunId, out _);
+            cts.Dispose();
+            throw new InvalidOperationException($"Run {config.RunId} is already active.");
+        }
+
+        logger.LogInformation("Starting SDLC run {RunId}", config.RunId);
+        await telemetry.StartPipelineRunAsync(config.RunId, config.ProjectBrief, ct);
+
         _ = handle.Task.ContinueWith(async t =>
         {
             _activeRuns.TryRemove(config.RunId, out _);
             _runCancellation.TryRemove(config.RunId, out _);
             cts.Dispose();
+
+            // Persist final state before telemetry
+            try
+            {
+                if (t.IsFaulted)
+                    await runStore.UpdateStageAsync(config.RunId, "Failed", "Failed");
+                else
+                    await runStore.UpdateStageAsync(config.RunId, "Learn", "Completed");
+            }
+            catch (Exception persistEx)
+            {
+                logger.LogError(persistEx, "Failed to persist completion state for run {RunId}", config.RunId);
+            }
+
             await telemetry.CompletePipelineRunAsync(config.RunId, ct);
             if (t.IsFaulted)
                 logger.LogError(t.Exception, "Run {RunId} failed", config.RunId);
@@ -110,13 +129,13 @@ public class PipelineRunnerService(
         {
             var tcs = new TaskCompletionSource<GateResolution>(TaskCreationOptions.RunContinuationsAsynchronously);
             _pendingGates[gate.GateId] = tcs;
-            _activeRuns.TryAdd(gate.RunId, new object());
+            _activeRuns.TryAdd(gate.RunId, Task.CompletedTask);
         }
 
         var incompleteRuns = await runStore.GetAllIncompleteAsync();
         foreach (var run in incompleteRuns)
         {
-            _activeRuns.TryAdd(run.RunId, new object());
+            _activeRuns.TryAdd(run.RunId, Task.CompletedTask);
         }
 
         foreach (var run in incompleteRuns)
@@ -149,6 +168,20 @@ public class PipelineRunnerService(
             _activeRuns.TryRemove(run.RunId, out _);
             _runCancellation.TryRemove(run.RunId, out _);
             cts.Dispose();
+
+            // Persist final state before telemetry
+            try
+            {
+                if (t.IsFaulted)
+                    await runStore.UpdateStageAsync(run.RunId, "Failed", "Failed");
+                else
+                    await runStore.UpdateStageAsync(run.RunId, run.CurrentStage, "Completed");
+            }
+            catch (Exception persistEx)
+            {
+                logger.LogError(persistEx, "Failed to persist completion state for recovery run {RunId}", run.RunId);
+            }
+
             await telemetry.CompletePipelineRunAsync(run.RunId, default);
             if (t.IsFaulted)
                 logger.LogError(t.Exception, "Recovery run {RunId} failed", run.RunId);
@@ -157,7 +190,19 @@ public class PipelineRunnerService(
         }, TaskScheduler.Default);
     }
 
-    public IReadOnlyCollection<Guid> GetAllActiveRunIds()
+    /// <summary>
+    /// Returns all in-flight pipeline tasks for graceful shutdown.
+    /// Excludes recovered/dummy tasks (Task.CompletedTask).
+    /// </summary>
+    public virtual IReadOnlyCollection<Task> AllInFlightTasks()
+    {
+        return _activeRuns.Values
+            .Where(t => t != Task.CompletedTask && !t.IsCompleted)
+            .ToList()
+            .AsReadOnly();
+    }
+
+    public virtual IReadOnlyCollection<Guid> GetAllActiveRunIds()
         => _activeRuns.Keys.ToList().AsReadOnly();
 
     public async Task CancelRunAsync(Guid runId, CancellationToken ct = default)

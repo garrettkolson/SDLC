@@ -71,6 +71,7 @@ builder.Services.AddSingleton<ISdlcProcessFactory>(sp => sp.GetRequiredService<S
 builder.Services.AddSingleton<PipelineRunnerService>();
 builder.Services.AddSingleton<IPipelineRunner>(sp => sp.GetRequiredService<PipelineRunnerService>());
 builder.Services.AddHostedService<PipelineRecoveryHostedService>();
+builder.Services.AddHostedService<PipelineShutdownService>();
 builder.Services.AddOpenTelemetry()
     .WithTracing(tracing => tracing
         .AddSource("SDLC.Pipeline"))
