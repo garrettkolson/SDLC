@@ -1,0 +1,155 @@
+@page "/gate/{GateId:guid}"
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@attribute [Authorize]
+@inject AuthenticationStateProvider AuthState
+@inject SDLC.Dashboard.Services.ISdlcRunService RunService
+@inject SDLC.Infrastructure.IStageGateStore GateStore
+
+<PageTitle>Gate Review — @gate?.GateId</PageTitle>
+
+@if (gate == null)
+{
+    <p>Gate not found.</p>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Gate Review: @gate.Stage</h2>
+        <span class="badge @(gate.Status == Contracts.GateStatus.Pending ? "bg-warning text-dark" : gate.Status == Contracts.GateStatus.Approved ? "bg-success" : "bg-danger")">
+            @gate.Status
+        </span>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">Gate Details</div>
+        <div class="card-body">
+            <dl class="row">
+                <dt class="col-sm-3">Gate ID</dt>
+                <dd class="col-sm-9"><code>@gate.GateId</code></dd>
+                <dt class="col-sm-3">Run ID</dt>
+                <dd class="col-sm-9"><code>@gate.RunId</code></dd>
+                <dt class="col-sm-3">Stage</dt>
+                <dd class="col-sm-9">@gate.Stage</dd>
+                <dt class="col-sm-3">Status</dt>
+                <dd class="col-sm-9">
+                    <span class="badge @(gate.Status == Contracts.GateStatus.Pending ? "bg-warning text-dark" : gate.Status == Contracts.GateStatus.Approved ? "bg-success" : "bg-danger")">
+                        @gate.Status
+                    </span>
+                </dd>
+            </dl>
+        </div>
+    </div>
+
+    @if (gate.Artifact != null)
+    {
+        <div class="card mb-4">
+            <div class="card-header">Artifact: @gate.Artifact.GetType().Name</div>
+            <div class="card-body">
+                <textarea class="form-control" rows="10" id="artifactContent" readonly>@gate.Artifact.Content</textarea>
+                <div class="form-text mt-1">View-only. Use the Approve/Reject buttons below to make a decision.</div>
+            </div>
+        </div>
+    }
+
+    @if (gate.Status == Contracts.GateStatus.Pending)
+    {
+        <div class="card mb-4">
+            <div class="card-header">Your Decision</div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="decisionNotes" class="form-label">Notes</label>
+                    <textarea class="form-control" id="decisionNotes" rows="3" @bind="decisionNotes"></textarea>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-success btn-lg" onclick="@ApproveAsync" disabled="@submitting">
+                        @if (submitting) { <span>Processing...</span> } else { <span>Approve</span> }
+                    </button>
+                    <button class="btn btn-danger btn-lg" onclick="@RejectAsync" disabled="@submitting">
+                        @if (submitting) { <span>Processing...</span> } else { <span>Reject</span> }
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">
+            This gate has already been resolved.
+            @if (gate.ResolvedById != null)
+            {
+                <div>Resolved by @gate.ResolvedByDisplay at @gate.ResolvedAt</div>
+            }
+            @if (!string.IsNullOrEmpty(gate.Notes))
+            {
+                <div>Notes: @gate.Notes</div>
+            }
+        </div>
+    }
+}
+
+@if (message != null)
+{
+    <div class="alert alert-@messageType">@message</div>
+}
+
+@code {
+    [Parameter] public Guid GateId { get; set; }
+    private SDLC.Infrastructure.StageGate? gate;
+    private string decisionNotes = "";
+    private string? message;
+    private string messageType = "info";
+    private bool submitting = false;
+    private string _userId = "anonymous";
+    private string _displayName = "anonymous";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirstValue("sub") ?? auth.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous";
+        _displayName = auth.User.Identity?.Name ?? "anonymous";
+
+        gate = await GateStore.GetAsync(GateId);
+    }
+
+    private async Task ApproveAsync()
+    {
+        await SubmitAsync(Contracts.GateDecision.Approved);
+    }
+
+    private async Task RejectAsync()
+    {
+        await SubmitAsync(Contracts.GateDecision.Rejected);
+    }
+
+    private async Task SubmitAsync(Contracts.GateDecision decision)
+    {
+        submitting = true;
+        try
+        {
+            if (decision == Contracts.GateDecision.Approved)
+            {
+                await RunService.ApproveGateAsync(GateId, _userId, _displayName, string.IsNullOrEmpty(decisionNotes) ? null : decisionNotes);
+                message = "Gate approved";
+                messageType = "success";
+            }
+            else
+            {
+                await RunService.RejectGateAsync(GateId, _userId, _displayName, decisionNotes);
+                message = "Gate rejected";
+                messageType = "danger";
+            }
+            gate = await GateStore.GetAsync(GateId);
+        }
+        catch (Exception ex)
+        {
+            message = $"Error: {ex.Message}";
+            messageType = "danger";
+        }
+        finally
+        {
+            submitting = false;
+        }
+    }
+}

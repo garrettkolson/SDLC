@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SDLC.Contracts;
 using SDLC.Infrastructure;
 using SDLC.Telemetry;
@@ -16,9 +17,11 @@ public class LearnStep
         IKernelFactory kernelFactory,
         IArtifactStore artifacts,
         IPipelineTelemetry telemetry,
+        IRunBudgetTracker budgetTracker,
         CancellationToken ct = default)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        using var activity = telemetry.StartStageActivity(config.RunId, SdlcStage.Learn);
         try
         {
             var kernel = kernelFactory.CreateForStage(SdlcStage.Learn);
@@ -29,13 +32,16 @@ public class LearnStep
 
             for (var attempt = 0; attempt < MaxAttempts; attempt++)
             {
-                var response = await kernel.CompleteAsync(LearnPrompts.SystemPrompt, string.Join("\n", history), ct);
+                await budgetTracker.EnsureWithinBudgetAsync(config.RunId, ct);
+
+                var (response, usage) = await kernel.CompleteAsyncWithUsage(LearnPrompts.SystemPrompt, string.Join("\n", history), ct);
                 lastAiResponse = response;
                 history.Add($"AI: {response}");
+                await budgetTracker.RecordAsync(config.RunId, usage.PromptTokens, usage.CompletionTokens, ct);
+                await telemetry.RecordTokenUsageAsync(config.RunId, usage.PromptTokens, usage.CompletionTokens, ct);
 
-                var critique = await kernel.CompleteAsync(LearnPrompts.CritiquePrompt, response, ct);
-
-                if (LearnPrompts.IsSatisfactory(critique))
+                var (critiqueResponse, critiqueUsage) = await kernel.CompleteAsyncWithUsage(LearnPrompts.CritiquePrompt, response, ct);
+                if (LearnPrompts.IsSatisfactory(critiqueResponse))
                 {
                     report = new LearnReport
                     {
@@ -46,7 +52,14 @@ public class LearnStep
                     };
                     break;
                 }
-                history.Add($"Critique: {critique}");
+                history.Add($"Critique: {critiqueResponse}");
+                await budgetTracker.RecordAsync(config.RunId, critiqueUsage.PromptTokens, critiqueUsage.CompletionTokens, ct);
+                await telemetry.RecordTokenUsageAsync(config.RunId, critiqueUsage.PromptTokens, critiqueUsage.CompletionTokens, ct);
+
+                if (await budgetTracker.IsOverBudgetAsync(config.RunId, ct))
+                {
+                    history = HistoryTruncator.Apply(history);
+                }
             }
 
             report ??= new LearnReport { Content = lastAiResponse, Retrospective = lastAiResponse, RunId = config.RunId, Stage = SdlcStage.Learn };
@@ -54,9 +67,13 @@ public class LearnStep
             await artifacts.SaveAsync(report);
             await context.EmitEventAsync(new KernelProcessEvent { Id = SdlcEvents.LearnComplete, Data = report }, ct);
             await telemetry.RecordStepCompletedAsync(SdlcStage.Learn, nameof(LearnStep), ct);
+            activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddTag("error.type", ex.GetType().Name);
+            activity?.AddTag("error.message", ex.Message);
             await telemetry.RecordStepFailedAsync(SdlcStage.Learn, nameof(LearnStep), ex, ct);
             throw;
         }

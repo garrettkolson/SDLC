@@ -1,0 +1,60 @@
+@page "/runs"
+@inject SDLC.Dashboard.Services.ISdlcRunService RunService
+
+<PageTitle>SDLC — Active Runs</PageTitle>
+
+<h2>Active SDLC Runs</h2>
+
+<div class="mb-3">
+    <a class="btn btn-primary" href="/runs/new">New Run</a>
+</div>
+
+@if (runs == null)
+{
+    <p>Loading...</p>
+}
+else if (!runs.Any())
+{
+    <p>No active runs. <a href="/runs/new">Start one</a>.</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Run ID</th>
+                <th>Status</th>
+                <th>Last Stage</th>
+                <th>Pending Gates</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var run in runs)
+            {
+                <tr>
+                    <td><code>@run.RunId</code></td>
+                    <td>
+                        <span class="badge @(run.IsActive ? "bg-success" : "bg-secondary")">
+                            @(run.IsActive ? "Active" : "Completed")
+                        </span>
+                    </td>
+                    <td>@run.LastStage</td>
+                    <td>@run.PendingGates.Count</td>
+                    <td>
+                        <a class="btn btn-sm btn-outline-primary" href="@($"/runs/{run.RunId}")">View</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<SDLC.Dashboard.Services.RunSummary>? runs;
+
+    protected override async Task OnInitializedAsync()
+    {
+        runs = await RunService.GetActiveRunsAsync();
+    }
+}

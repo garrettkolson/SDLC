@@ -1,11 +1,37 @@
+using OpenTelemetry;
+using Serilog;
+using Serilog.Events;
 using SDLC.Agents;
 using SDLC.Contracts;
 using SDLC.Dashboard.Components;
+using SDLC.Dashboard.Services;
+using SDLC.Infrastructure;
 using SDLC.Notifications;
 using SDLC.Orchestrator;
 using SDLC.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Serilog — structured logging with console + OpenTelemetry sinks
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithProperty("Service", "SDLC.Dashboard")
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.OpenTelemetry(opts =>
+    {
+        opts.ResourceAttributes = new Dictionary<string, object>
+        {
+            ["service.name"] = "SDLC.Dashboard",
+            ["service.version"] = "1.0.0"
+        };
+    })
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -13,12 +39,20 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddControllers();
 
-var dbConn = builder.Configuration.GetConnectionString("SDLCDb") ?? "Data Source=sdlc.db";
+var dbConn = builder.Configuration.GetConnectionString("SDLCDb")
+    ?? "Data Source=sdlc.db;Pooling=True;Cache=Shared;Mode=ReadWriteCreate;";
 var artifactDir = Path.Combine(AppContext.BaseDirectory, "artifacts");
+
 builder.Services.AddSingleton<SDLC.Infrastructure.IArtifactStore>(
     new SDLC.Infrastructure.ArtifactStore(dbConn, artifactDir));
 builder.Services.AddSingleton<SDLC.Infrastructure.IStageGateStore>(
     new SDLC.Infrastructure.StageGateStore(dbConn));
+builder.Services.AddSingleton<SDLC.Infrastructure.RunStore>(
+    new SDLC.Infrastructure.RunStore(dbConn));
+builder.Services.AddSingleton<SDLC.Infrastructure.IRunStore>(sp => sp.GetRequiredService<SDLC.Infrastructure.RunStore>());
+
+var tokenBudget = (long)(builder.Configuration.GetValue<int?>("Sdlc:TokenBudget:MaxTokensPerRun") ?? 500_000);
+builder.Services.AddSingleton<Func<IRunBudgetTracker>>(sp => () => new RunBudgetTracker(tokenBudget));
 
 // HTTP client and notification service
 builder.Services.AddHttpClient();
@@ -28,16 +62,23 @@ builder.Services.AddHttpClient<ISweAfClient>((sp, http) =>
         ?? throw new InvalidOperationException("SweAf:BaseUrl required"));
     http.Timeout = TimeSpan.FromMinutes(30);
 });
-builder.Services.AddHttpClient("vllm", (sp, http) =>
-{
-    http.Timeout = TimeSpan.FromMinutes(5);
-});
 
+// Slack notification with resilience handler
+var slackBaseUrl = builder.Configuration["Slack:BaseUrl"]
+    ?? throw new InvalidOperationException("Slack:BaseUrl required");
+builder.Services.AddHttpClient("slack")
+    .AddHttpMessageHandler<SDLC.Notifications.ResilientSlackHandler>()
+    .ConfigureHttpClient(h =>
+    {
+        h.BaseAddress = new Uri(slackBaseUrl);
+        h.Timeout = TimeSpan.FromSeconds(30);
+    });
+builder.Services.AddSingleton<SDLC.Notifications.SlackNotificationService>();
+builder.Services.AddSingleton<SDLC.Notifications.IEmailNotificationService, SDLC.Notifications.FallbackEmailNotificationService>();
+builder.Services.AddSingleton<SDLC.Notifications.CompositeNotificationService>();
 builder.Services.AddSingleton<SDLC.Notifications.INotificationService>(sp =>
-    new SDLC.Notifications.SlackNotificationService(
-        sp.GetRequiredService<IHttpClientFactory>().CreateClient(),
-        "/webhook/sdlc",
-        sp.GetRequiredService<SDLC.Notifications.DashboardUrlBuilder>()));
+    sp.GetRequiredService<SDLC.Notifications.CompositeNotificationService>());
+builder.Services.AddHostedService<SDLC.Notifications.GateReminderService>();
 
 // Telemetry
 builder.Services.AddSingleton<IPipelineTelemetry, PipelineTelemetry>();
@@ -47,6 +88,7 @@ var modelRouting = builder.Configuration.GetSection("ModelRouting").Get<ModelRou
     ?? ModelRoutingConfig.Default;
 builder.Services.AddSingleton(modelRouting);
 
+builder.Services.AddSingleton<IResilientHttpClientFactory, ResilientHttpClientFactory>();
 builder.Services.AddSingleton<IKernelFactory, AgentKernelFactory>();
 
 var dashboardBaseUrl = builder.Configuration["Dashboard:BaseUrl"]
@@ -57,18 +99,41 @@ builder.Services.AddSingleton<SdlcProcessFactory>();
 builder.Services.AddSingleton<ISdlcProcessFactory>(sp => sp.GetRequiredService<SdlcProcessFactory>());
 builder.Services.AddSingleton<PipelineRunnerService>();
 builder.Services.AddSingleton<IPipelineRunner>(sp => sp.GetRequiredService<PipelineRunnerService>());
+builder.Services.AddHostedService<PipelineRecoveryHostedService>();
+builder.Services.AddHostedService<PipelineShutdownService>();
 builder.Services.AddOpenTelemetry()
+    .WithTracing(tracing => tracing
+        .AddSource("SDLC.Pipeline"))
     .WithMetrics(metrics => metrics.AddMeter("SDLC"));
+
+// VllmHealthCheck — used by /health/ready endpoint
+builder.Services.AddSingleton<VllmHealthCheck>();
 
 // Simple run service — renders data, resolves gates via StageGateStore
 builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService>(sp =>
     new SDLC.Dashboard.Services.SdlcRunService(
         sp.GetRequiredService<SDLC.Infrastructure.IArtifactStore>(),
         sp.GetRequiredService<SDLC.Infrastructure.IStageGateStore>(),
+        sp.GetRequiredService<SDLC.Infrastructure.IRunStore>(),
         sp.GetRequiredService<IPipelineTelemetry>(),
         sp.GetRequiredService<IPipelineRunner>()));
 
 var app = builder.Build();
+
+// Initialize DB — tables + WAL mode
+using var initScope = app.Services.CreateScope();
+await initScope.ServiceProvider.GetRequiredService<IArtifactStore>().InitializeAsync();
+await initScope.ServiceProvider.GetRequiredService<IStageGateStore>().InitializeAsync();
+await initScope.ServiceProvider.GetRequiredService<IRunStore>().InitializeAsync();
+
+// Health endpoints
+app.MapGet("/health/live", () => Results.Ok("OK"));
+
+app.MapGet("/health/ready", async (VllmHealthCheck vllmCheck) =>
+{
+    var (healthy, message) = await vllmCheck.CheckAsync();
+    return healthy ? Results.Ok(message) : Results.Problem(message, statusCode: 503);
+});
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

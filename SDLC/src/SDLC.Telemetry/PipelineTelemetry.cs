@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text.Json;
 using SDLC.Contracts;
 
@@ -19,18 +21,26 @@ public record GateEvent(
 
 public record PipelineEvent(
     Guid RunId,
-    string? ProjectBrief,
+    string? ProjectBriefHash,
     DateTimeOffset Started,
     DateTimeOffset? Ended);
 
 public interface IPipelineTelemetry
 {
+    /// <summary>Starts a parent activity for a pipeline run.</summary>
+    Activity? StartRunActivity(Guid runId);
+
+    /// <summary>Starts a child activity for a pipeline stage.</summary>
+    Activity? StartStageActivity(Guid runId, SdlcStage stage);
+
     Task RecordStepCompletedAsync(SdlcStage stage, string stepName, CancellationToken ct = default);
     Task RecordStepFailedAsync(SdlcStage stage, string stepName, Exception ex, CancellationToken ct = default);
     Task RecordGateApprovedAsync(Guid gateId, string? userId = null, CancellationToken ct = default);
     Task RecordGateRejectedAsync(Guid gateId, string? userId = null, CancellationToken ct = default);
     Task StartPipelineRunAsync(Guid runId, string projectBrief, CancellationToken ct = default);
     Task CompletePipelineRunAsync(Guid runId, CancellationToken ct = default);
+    Task RecordRunCancelledAsync(Guid runId, CancellationToken ct = default);
+    Task RecordTokenUsageAsync(Guid runId, long promptTokens, long completionTokens, CancellationToken ct = default);
 
     Task<IReadOnlyList<StepEvent>> GetStepEventsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<GateEvent>> GetGateEventsAsync(CancellationToken ct = default);
@@ -42,6 +52,26 @@ public class PipelineTelemetry : IPipelineTelemetry
     private readonly ConcurrentQueue<StepEvent> _stepEvents = new();
     private readonly ConcurrentQueue<GateEvent> _gateEvents = new();
     private readonly ConcurrentQueue<PipelineEvent> _pipelineEvents = new();
+
+    public Activity? StartRunActivity(Guid runId)
+    {
+        var activity = SdlcTelemetry.ActivitySource.StartActivity(
+            "SDLC.Pipeline.Run", ActivityKind.Server, null,
+            new Dictionary<string, object?> { ["run.id"] = runId });
+        return activity;
+    }
+
+    public Activity? StartStageActivity(Guid runId, SdlcStage stage)
+    {
+        if (Activity.Current is null)
+        {
+            return SdlcTelemetry.ActivitySource.StartActivity($"SDLC.Pipeline.{stage}");
+        }
+
+        return SdlcTelemetry.ActivitySource.StartActivity(
+            $"SDLC.Pipeline.{stage}", ActivityKind.Internal, Activity.Current.Context,
+            new Dictionary<string, object?> { ["run.id"] = runId });
+    }
 
     public async Task RecordStepCompletedAsync(SdlcStage stage, string stepName, CancellationToken ct = default)
     {
@@ -68,13 +98,32 @@ public class PipelineTelemetry : IPipelineTelemetry
     public async Task StartPipelineRunAsync(Guid runId, string projectBrief, CancellationToken ct = default)
     {
         SdlcTelemetry.RunsStarted.Add(1);
-        _pipelineEvents.Enqueue(new PipelineEvent(runId, projectBrief, DateTimeOffset.UtcNow, null));
+        _pipelineEvents.Enqueue(new PipelineEvent(runId, HashProjectBrief(projectBrief), DateTimeOffset.UtcNow, null));
+    }
+
+    public static string HashProjectBrief(string brief)
+    {
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(brief));
+        return Convert.ToHexStringLower(hash)[..16];
     }
 
     public async Task CompletePipelineRunAsync(Guid runId, CancellationToken ct = default)
     {
         SdlcTelemetry.RunsCompleted.Add(1);
         _pipelineEvents.Enqueue(new PipelineEvent(runId, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+    }
+
+    public async Task RecordRunCancelledAsync(Guid runId, CancellationToken ct = default)
+    {
+        SdlcTelemetry.RunsCancelled.Add(1);
+        _pipelineEvents.Enqueue(new PipelineEvent(runId, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+    }
+
+    public Task RecordTokenUsageAsync(Guid runId, long promptTokens, long completionTokens, CancellationToken ct = default)
+    {
+        SdlcTelemetry.RecordTokenUsage(promptTokens, completionTokens);
+        return Task.CompletedTask;
     }
 
     public async Task<IReadOnlyList<StepEvent>> GetStepEventsAsync(CancellationToken ct = default)

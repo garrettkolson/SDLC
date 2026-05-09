@@ -1,0 +1,10 @@
+**/bin
+**/obj
+**/.vs
+**/.vscode
+**/*.user
+**/.git
+artifacts/
+*.db
+*.db-shm
+*.db-wal

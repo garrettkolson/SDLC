@@ -4,6 +4,7 @@ namespace SDLC.Infrastructure;
 
 public interface IArtifactStore
 {
+    Task InitializeAsync();
     Task SaveAsync(SdlcArtifact artifact);
     Task<T?> GetAsync<T>(Guid artifactId) where T : SdlcArtifact;
     Task<T?> GetLatestForRunAsync<T>(Guid runId) where T : SdlcArtifact;
@@ -15,11 +16,25 @@ public interface IArtifactStore
 
 public interface IStageGateStore
 {
+    Task InitializeAsync();
     Task<StageGate> CreateGateAsync(SdlcArtifact artifact);
     Task<StageGate?> GetAsync(Guid gateId);
     Task ResolveAsync(Guid gateId, GateDecision decision, string? notes, string resolvedById, string resolvedByDisplay);
     Task<List<StageGate>> GetPendingForRunAsync(Guid runId);
+    Task<List<StageGate>> GetAllPendingAsync();
 }
+
+public interface IRunStore
+{
+    Task InitializeAsync();
+    Task CreateRunAsync(Guid runId, string projectBrief, string startedAt);
+    Task UpdateStageAsync(Guid runId, string stage, string status);
+    Task<RunCheckpoint?> GetRunAsync(Guid runId);
+    Task<List<RunCheckpoint>> GetAllIncompleteAsync();
+    Task CancelRunAsync(Guid runId);
+}
+
+public record RunCheckpoint(Guid RunId, string CurrentStage, string Status, DateTimeOffset StartedAt);
 
 public class StageGate
 {
@@ -31,5 +46,6 @@ public class StageGate
     public DateTimeOffset? ResolvedAt { get; set; }
     public string? ResolvedById { get; set; }
     public string? ResolvedByDisplay { get; set; }
+    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public SdlcArtifact? Artifact { get; set; }
 }

@@ -93,7 +93,7 @@ public class PipelineTelemetryTests
 
         events.Should().ContainSingle();
         events[0].RunId.Should().Be(runId);
-        events[0].ProjectBrief.Should().Be(brief);
+        events[0].ProjectBriefHash.Should().Be(PipelineTelemetry.HashProjectBrief(brief));
         events[0].Ended.Should().BeNull();
     }
 

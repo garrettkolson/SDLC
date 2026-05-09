@@ -7,6 +7,7 @@ using SDLC.Dashboard.Services;
 using SDLC.Infrastructure;
 using SDLC.Orchestrator;
 using SDLC.Telemetry;
+using System.Collections.Concurrent;
 
 namespace SDLC.Dashboard.Tests;
 
@@ -18,6 +19,7 @@ public class SdlcRunServiceGetActiveRunsTests
 {
     private TestArtifactStore _artifactStore = null!;
     private TestGateStore _gateStore = null!;
+    private TestRunStore _runStore = null!;
     private IPipelineTelemetry telemetry = null!;
 
     [SetUp]
@@ -25,6 +27,7 @@ public class SdlcRunServiceGetActiveRunsTests
     {
         _artifactStore = new TestArtifactStore();
         _gateStore = new TestGateStore();
+        _runStore = new TestRunStore();
         telemetry = Substitute.For<IPipelineTelemetry>();
     }
 
@@ -39,7 +42,7 @@ public class SdlcRunServiceGetActiveRunsTests
         _artifactStore.Add(new RequirementsSpec { RunId = runId2, Stage = SdlcStage.Requirements, Content = "r2" });
         _artifactStore.Add(new ArchitectureRecord { RunId = runId3, Stage = SdlcStage.Design, Content = "r3" });
 
-        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, new TestRunner());
+        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, new TestRunner());
         var results = await service.GetActiveRunsAsync();
 
         results.Should().HaveCount(3);
@@ -49,7 +52,7 @@ public class SdlcRunServiceGetActiveRunsTests
     [Test]
     public async Task GetActiveRunsAsync_NoArtifacts_ReturnsEmpty()
     {
-        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, new TestRunner());
+        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, new TestRunner());
         var results = await service.GetActiveRunsAsync();
 
         results.Should().BeEmpty();
@@ -62,7 +65,7 @@ public class SdlcRunServiceGetActiveRunsTests
         _artifactStore.Add(new ResearchBrief { RunId = runId, Stage = SdlcStage.Research, Content = "r1" });
         _artifactStore.Add(new ResearchBrief { RunId = runId, Stage = SdlcStage.Research, Content = "r2" });
 
-        var service = new SdlcRunService(_artifactStore, _gateStore, telemetry, new TestRunner());
+        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, new TestRunner());
         var results = await service.GetActiveRunsAsync();
 
         results.Should().ContainSingle(r => r.RunId == runId);
@@ -71,6 +74,7 @@ public class SdlcRunServiceGetActiveRunsTests
     private class TestArtifactStore : IArtifactStore
     {
         private readonly List<SdlcArtifact> _artifacts = new();
+        public Task InitializeAsync() => Task.CompletedTask;
         public void Add(SdlcArtifact a) => _artifacts.Add(a);
         public Task SaveAsync(SdlcArtifact artifact) { _artifacts.Add(artifact); return Task.CompletedTask; }
         public Task<T?> GetAsync<T>(Guid id) where T : SdlcArtifact => Task.FromResult(_artifacts.OfType<T>().FirstOrDefault(a => a.ArtifactId == id));
@@ -83,10 +87,12 @@ public class SdlcRunServiceGetActiveRunsTests
 
     private class TestGateStore : IStageGateStore
     {
+        public Task InitializeAsync() => Task.CompletedTask;
         public Task<StageGate> CreateGateAsync(SdlcArtifact artifact) => throw new NotImplementedException();
         public Task<StageGate?> GetAsync(Guid id) => Task.FromResult<StageGate?>(null);
         public Task ResolveAsync(Guid id, GateDecision decision, string? notes, string resolvedById, string resolvedByDisplay) => throw new NotImplementedException();
         public Task<List<StageGate>> GetPendingForRunAsync(Guid runId) => Task.FromResult(new List<StageGate>());
+        public Task<List<StageGate>> GetAllPendingAsync() => Task.FromResult(new List<StageGate>());
     }
 
     private class TestRunner : IPipelineRunner
@@ -94,5 +100,38 @@ public class SdlcRunServiceGetActiveRunsTests
         public bool IsRunActive(Guid runId) => false;
         public Task EnqueueAsync(SdlcRunConfig config, CancellationToken ct = default) => Task.CompletedTask;
         public Task ResumeGateAsync(Guid runId, Guid gateId, GateDecision decision, string? notes, CancellationToken ct = default) => Task.CompletedTask;
+        public Task CancelRunAsync(Guid runId, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private class TestRunStore : IRunStore
+    {
+        private readonly ConcurrentDictionary<Guid, RunCheckpoint> _runs = new();
+
+        public Task InitializeAsync() => Task.CompletedTask;
+        public Task CancelRunAsync(Guid runId) => Task.CompletedTask;
+
+        public Task CreateRunAsync(Guid runId, string projectBrief, string startedAt)
+        {
+            _runs[runId] = new RunCheckpoint(runId, "Research", "Running", DateTimeOffset.Parse(startedAt));
+            return Task.CompletedTask;
+        }
+
+        public Task<List<RunCheckpoint>> GetAllIncompleteAsync() =>
+            Task.FromResult(_runs.Values.ToList());
+
+        public Task<RunCheckpoint?> GetRunAsync(Guid runId) => Task.FromResult(_runs.GetValueOrDefault(runId));
+
+        public Task SaveAsync(SdlcArtifact artifact) => Task.CompletedTask;
+        public Task<T?> GetAsync<T>(Guid artifactId) where T : SdlcArtifact => Task.FromResult<T?>(null);
+        public Task<T?> GetLatestForRunAsync<T>(Guid runId) where T : SdlcArtifact => Task.FromResult<T?>(null);
+        public Task UpdateStatusAsync(Guid artifactId, ArtifactStatus status) => Task.CompletedTask;
+        public Task UpdateContentAsync(Guid artifactId, string content) => Task.CompletedTask;
+        public Task<List<SdlcArtifact>> GetAllForRunAsync(Guid runId) => Task.FromResult(new List<SdlcArtifact>());
+        public Task<List<Guid>> GetAllRunIdsAsync() => Task.FromResult(new List<Guid>());
+        public Task UpdateStageAsync(Guid runId, string stage, string status)
+        {
+            _runs[runId] = new RunCheckpoint(runId, stage, status, DateTimeOffset.UtcNow);
+            return Task.CompletedTask;
+        }
     }
 }

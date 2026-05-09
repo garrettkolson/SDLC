@@ -19,6 +19,7 @@ public class ResearchStepFallbackTests
     private IKernelFactory _kernelFactory = null!;
     private IKernel _fakeKernel = null!;
     private IPipelineTelemetry telemetry = null!;
+    private IRunBudgetTracker _budgetTracker = null!;
     private ResearchBrief? _saved = null!;
 
     [SetUp]
@@ -28,6 +29,15 @@ public class ResearchStepFallbackTests
         _fakeKernel = Substitute.For<IKernel>();
         _kernelFactory = Substitute.For<IKernelFactory>();
         telemetry = Substitute.For<IPipelineTelemetry>();
+        _budgetTracker = Substitute.For<IRunBudgetTracker>();
+        _budgetTracker.EnsureWithinBudgetAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.CompletedTask);
+        _budgetTracker.IsOverBudgetAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.FromResult(false));
+        _budgetTracker.RecordAsync(Arg.Any<Guid>(), Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.CompletedTask);
+        _budgetTracker.GetUsageAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                      .Returns(Task.FromResult(TokenUsage.Zero));
         _kernelFactory.CreateForStage(SdlcStage.Research).Returns(_fakeKernel);
 
         _artifacts.SaveAsync(Arg.Do<ResearchBrief>(b => _saved = b));
@@ -39,23 +49,19 @@ public class ResearchStepFallbackTests
         const string lastAi = "Last AI attempt content";
         const string critique = "Not satisfactory at all. [UNSATISFACTORY]";
 
-        var seq = new List<string>
-        {
-            "First attempt. [UNSATISFACTORY]",
-            critique,
-            "Second attempt. [UNSATISFACTORY]",
-            critique,
-            lastAi,
-            critique
-        };
-        int idx = 0;
-        _fakeKernel.CompleteAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-                   .Returns(_ => seq[idx++]);
+        _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                   .Returns(
+                       ("First attempt. [UNSATISFACTORY]", TokenUsage.Zero),
+                       (critique, TokenUsage.Zero),
+                       ("Second attempt. [UNSATISFACTORY]", TokenUsage.Zero),
+                       (critique, TokenUsage.Zero),
+                       (lastAi, TokenUsage.Zero),
+                       (critique, TokenUsage.Zero));
 
         var config = new SdlcRunConfig { ProjectBrief = "Test" };
 
         var step = new ResearchStep();
-        await step.RunAsync(new CapturingContext(), config, _kernelFactory, _artifacts, telemetry);
+        await step.RunAsync(new CapturingContext(), config, _kernelFactory, _artifacts, telemetry, _budgetTracker);
 
         _saved!.Content.Should().Be(lastAi);
         _saved.Content.Should().NotContain("Not satisfactory");

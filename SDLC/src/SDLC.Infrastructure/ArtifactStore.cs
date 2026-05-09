@@ -28,6 +28,8 @@ public class ArtifactStore : IArtifactStore
                 file_path TEXT NOT NULL,
                 created_at TEXT NOT NULL
             )");
+        await conn.ExecuteAsync("PRAGMA journal_mode = WAL;");
+        await conn.ExecuteAsync("PRAGMA synchronous = NORMAL;");
     }
 
     public async Task SaveAsync(SdlcArtifact artifact)
@@ -102,9 +104,11 @@ public class ArtifactStore : IArtifactStore
     {
         using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync();
+        using var tx = await conn.BeginTransactionAsync();
 
-        var row = await conn.QueryFirstOrDefaultAsync<string>("SELECT file_path FROM artifacts WHERE artifact_id = :Id",
-            new { Id = artifactId.ToString() });
+        var row = await conn.QueryFirstOrDefaultAsync<string>(
+            "SELECT file_path FROM artifacts WHERE artifact_id = :Id",
+            new { Id = artifactId.ToString() }, tx);
 
         if (row != null)
             await File.WriteAllTextAsync(row, content);
@@ -112,7 +116,9 @@ public class ArtifactStore : IArtifactStore
         // Content edited → needs re-approval; reset to PendingReview (not Draft)
         await conn.ExecuteAsync(@"
             UPDATE artifacts SET status = 'PendingReview' WHERE artifact_id = :Id",
-            new { Id = artifactId.ToString() });
+            new { Id = artifactId.ToString() }, tx);
+
+        await tx.CommitAsync();
     }
 
     public async Task<List<SdlcArtifact>> GetAllForRunAsync(Guid runId)

@@ -120,6 +120,7 @@ public class BuildStepTests
     {
         public List<SdlcArtifact> Saved { get; } = new();
 
+        public Task InitializeAsync() => Task.CompletedTask;
         public Task SaveAsync(SdlcArtifact artifact)
         {
             Saved.Add(artifact);
