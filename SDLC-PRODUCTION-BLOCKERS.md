@@ -702,7 +702,7 @@ private static List<string> TruncateHistory(List<string> history, int maxChars =
 
 4. Per-stage `max_tokens` from config (see P1-7).
 
-**Done when:** Run summary shows `total_tokens`, `estimated_cost_usd`. Budget exceedance halts run cleanly.
+**Resolved:** `IRunBudgetTracker` interface in `SDLC.Contracts`, `RunBudgetTracker` impl in `SDLC.Infrastructure` with `ConcurrentDictionary<Guid, TokenAccumulator>`. `BudgetExceededException` with `PromptTokens`/`CompletionTokens`/`BudgetLimit` properties. `TokenUsage` record with `TotalTokens` and `Zero` static. Token usage parsed in `AgentKernelFactory.CompleteAsyncWithUsage` from `prompt_tokens`/`completion_tokens` JSON fields. Each step (Research, Requirements, Design, Learn) injects `IRunBudgetTracker` and calls `IsOverBudgetAsync` + `HistoryTruncator.Apply()` after API calls. `HistoryTruncator` in `SDLC.Agents` keeps system prompt + last 10 turns. `max_tokens` from config via `_endpoint.MaxTokens ?? 4096` in `AgentKernelFactory`. DI wiring in `Program.cs:54` reads `Sdlc:TokenBudget:MaxTokensPerRun` (default 500K). Telemetry counters `LlmPromptTokens`/`LlmCompletionTokens` in `PipelineTelemetry`. 10+ tests across `RunBudgetTrackerTests`, `BudgetExceededExceptionTests`, `TokenUsageTests`, `HistoryTruncatorTests`, `DefaultKernelWithUsageTests`, `PipelineTelemetryTokenTests`, and per-step budget tests. All tests pass.
 
 ---
 
@@ -858,10 +858,10 @@ public async Task ResumeGateAsync(...)
 | 3 Hardening          | 95  | P2-13 migrations/backup |
 | 4 Notifications      | 100 | — |
 | 5 Dashboard          | 100 | — |
-| 6 Observability      | 90  | P2-16 token budget, P2-17 secrets |
+| 6 Observability      | 95  | P2-17 secrets |
 | 7 Docker             | 85  | TLS/reverse proxy |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13 (migrations/backup), P2-16, P2-17.
+**Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13 (migrations/backup), P2-17.
 
-**Next 3 before scale:** P2-13 (backup strategy), P2-16, P2-17.
+**Next 3 before scale:** P2-13 (backup strategy), P2-17.
