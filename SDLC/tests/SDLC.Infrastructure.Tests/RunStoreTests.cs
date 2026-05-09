@@ -16,7 +16,7 @@ public class RunStoreTests
     {
         _tempFile = Path.Combine(Path.GetTempPath(), $"test_runs_{Guid.NewGuid()}.db");
         var connString = $"Data Source={_tempFile}";
-        _store = new RunStore(connString);
+        _store = new RunStore(new SqlDbConnectionFactory(connString));
         await _store.InitializeAsync();
     }
 
@@ -26,7 +26,7 @@ public class RunStoreTests
         try { File.Delete(_tempFile); } catch { /* ignore */ }
     }
 
-    private RunStore GetStore() => new RunStore($"Data Source={_tempFile}");
+    private RunStore GetStore() => new RunStore(new SqlDbConnectionFactory($"Data Source={_tempFile}"));
 
     [Test]
     public async Task CreateRunAsync_StoresRun()

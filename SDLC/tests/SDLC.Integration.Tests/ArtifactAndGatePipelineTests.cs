@@ -22,8 +22,8 @@ public class ArtifactAndGatePipelineTests
     {
         _dbPath = Path.GetTempFileName();
         _tempDir = Path.Combine(Path.GetTempPath(), $"sdlc-integration-{Guid.NewGuid():N}");
-        _artifactStore = new ArtifactStore($"Data Source={_dbPath}", _tempDir);
-        _gateStore = new StageGateStore($"Data Source={_dbPath}");
+        _artifactStore = new ArtifactStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"), _tempDir);
+        _gateStore = new StageGateStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"));
         await _artifactStore.InitializeAsync();
         await _gateStore.InitializeAsync();
     }

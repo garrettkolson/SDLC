@@ -28,8 +28,8 @@ public class PipelineCancellationTests
     {
         _dbPath = Path.GetTempFileName();
         _tempDir = Path.Combine(Path.GetTempPath(), $"sdlc-cancel-{Guid.NewGuid():N}");
-        var concreteArtifactStore = new ArtifactStore($"Data Source={_dbPath}", _tempDir);
-        var concreteGateStore = new StageGateStore($"Data Source={_dbPath}");
+        var concreteArtifactStore = new ArtifactStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"), _tempDir);
+        var concreteGateStore = new StageGateStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"));
         await concreteArtifactStore.InitializeAsync();
         await concreteGateStore.InitializeAsync();
     }

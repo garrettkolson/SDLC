@@ -22,7 +22,7 @@ public class InitializationTests
     [Test]
     public async Task ArtifactStoreInitializeAsync_SetsWALMode()
     {
-        var store = new ArtifactStore($"Data Source={_dbPath}", Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()));
+        var store = new ArtifactStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"), Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()));
         await store.InitializeAsync();
 
         var mode = await QueryPragma(_dbPath, "PRAGMA journal_mode");
@@ -32,7 +32,7 @@ public class InitializationTests
     [Test]
     public async Task ArtifactStoreInitializeAsync_SetsSynchronousNormal()
     {
-        var store = new ArtifactStore($"Data Source={_dbPath}", Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()));
+        var store = new ArtifactStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"), Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()));
         await store.InitializeAsync();
 
         var sync = await QueryPragmaInt(_dbPath, "PRAGMA synchronous");
@@ -42,7 +42,7 @@ public class InitializationTests
     [Test]
     public async Task RunStoreInitializeAsync_SetsWALMode()
     {
-        var store = new RunStore($"Data Source={_dbPath}");
+        var store = new RunStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"));
         await store.InitializeAsync();
 
         var mode = await QueryPragma(_dbPath, "PRAGMA journal_mode");
@@ -52,7 +52,7 @@ public class InitializationTests
     [Test]
     public async Task RunStoreInitializeAsync_SetsSynchronousNormal()
     {
-        var store = new RunStore($"Data Source={_dbPath}");
+        var store = new RunStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"));
         await store.InitializeAsync();
 
         var sync = await QueryPragmaInt(_dbPath, "PRAGMA synchronous");
@@ -62,7 +62,7 @@ public class InitializationTests
     [Test]
     public async Task StageGateStoreInitializeAsync_SetsWALMode()
     {
-        var store = new StageGateStore($"Data Source={_dbPath}");
+        var store = new StageGateStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"));
         await store.InitializeAsync();
 
         var mode = await QueryPragma(_dbPath, "PRAGMA journal_mode");
@@ -72,7 +72,7 @@ public class InitializationTests
     [Test]
     public async Task StageGateStoreInitializeAsync_SetsSynchronousNormal()
     {
-        var store = new StageGateStore($"Data Source={_dbPath}");
+        var store = new StageGateStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"));
         await store.InitializeAsync();
 
         var sync = await QueryPragmaInt(_dbPath, "PRAGMA synchronous");
@@ -82,15 +82,15 @@ public class InitializationTests
     [Test]
     public async Task AllStoresInitializeAsync_DoesNotThrowIfTableAlreadyExists()
     {
-        var artifactStore = new ArtifactStore($"Data Source={_dbPath}", Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()));
-        var runStore = new RunStore($"Data Source={_dbPath}");
-        var gateStore = new StageGateStore($"Data Source={_dbPath}");
+        var artifactStore = new ArtifactStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"), Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()));
+        var runStore = new RunStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"));
+        var gateStore = new StageGateStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"));
 
         await artifactStore.InitializeAsync();
         await runStore.InitializeAsync();
         await gateStore.InitializeAsync();
 
-        // Second call — should not error (CREATE TABLE IF NOT EXISTS)
+        // Second call -- should not error (PRAGMAs are idempotent)
         await artifactStore.InitializeAsync();
         await runStore.InitializeAsync();
         await gateStore.InitializeAsync();
@@ -102,14 +102,12 @@ public class InitializationTests
     public async Task WALMode_ConcurrentReadersCompleteDuringWrite()
     {
         // WAL mode allows multiple readers to proceed while a writer is active.
-        // Write a run, then verify concurrent reads complete.
-        var store = new RunStore($"Data Source={_dbPath}");
+        var store = new RunStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"));
         await store.InitializeAsync();
 
         var runId = Guid.NewGuid();
         await store.CreateRunAsync(runId, "brief", DateTimeOffset.UtcNow.ToString("o"));
 
-        // Multiple concurrent reads + the writer's transaction is still active
         var task1 = store.GetRunAsync(runId);
         var task2 = store.GetAllIncompleteAsync();
         await Task.WhenAll(task1, task2);

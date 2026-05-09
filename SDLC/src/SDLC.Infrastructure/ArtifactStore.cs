@@ -6,18 +6,18 @@ namespace SDLC.Infrastructure;
 
 public class ArtifactStore : IArtifactStore
 {
-    private readonly string _connectionString;
+    private readonly IDbConnectionFactory _factory;
     private readonly string _basePath;
 
-    public ArtifactStore(string connectionString, string basePath)
+    public ArtifactStore(IDbConnectionFactory factory, string basePath)
     {
-        _connectionString = connectionString;
+        _factory = factory;
         _basePath = basePath;
     }
 
     public async Task InitializeAsync()
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         await conn.ExecuteAsync(@"
             CREATE TABLE IF NOT EXISTS artifacts (
@@ -38,7 +38,7 @@ public class ArtifactStore : IArtifactStore
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllTextAsync(path, artifact.Content ?? "");
 
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         await conn.ExecuteAsync(@"
             INSERT OR REPLACE INTO artifacts
@@ -57,7 +57,7 @@ public class ArtifactStore : IArtifactStore
 
     public async Task<T?> GetAsync<T>(Guid artifactId) where T : SdlcArtifact
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         var row = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
             SELECT artifact_id, run_id, file_path, stage, status, created_at
@@ -73,7 +73,7 @@ public class ArtifactStore : IArtifactStore
 
     public async Task<T?> GetLatestForRunAsync<T>(Guid runId) where T : SdlcArtifact
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         var stageStr = GetStageName(typeof(T));
         var row = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
@@ -92,7 +92,7 @@ public class ArtifactStore : IArtifactStore
 
     public async Task UpdateStatusAsync(Guid artifactId, ArtifactStatus status)
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         await conn.ExecuteAsync(@"
             UPDATE artifacts SET status = :Status
@@ -102,7 +102,7 @@ public class ArtifactStore : IArtifactStore
 
     public async Task UpdateContentAsync(Guid artifactId, string content)
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         using var tx = await conn.BeginTransactionAsync();
 
@@ -123,7 +123,7 @@ public class ArtifactStore : IArtifactStore
 
     public async Task<List<SdlcArtifact>> GetAllForRunAsync(Guid runId)
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         var rows = await conn.QueryAsync<dynamic>(@"
             SELECT artifact_id, file_path, stage, status, created_at
@@ -164,7 +164,7 @@ public class ArtifactStore : IArtifactStore
 
     public async Task<List<Guid>> GetAllRunIdsAsync()
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         var rows = await conn.QueryAsync<string>(
             "SELECT DISTINCT run_id FROM artifacts ORDER BY created_at DESC");

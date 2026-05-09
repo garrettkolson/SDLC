@@ -20,7 +20,7 @@ public class ArtifactStoreNoCollisionTests
         _dbPath = Path.GetTempFileName();
         _fsPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(_fsPath);
-        _store = new ArtifactStore($"Data Source={_dbPath}", _fsPath);
+        _store = new ArtifactStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"), _fsPath);
         await _store.InitializeAsync();
     }
 

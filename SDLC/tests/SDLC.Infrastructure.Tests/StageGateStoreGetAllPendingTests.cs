@@ -16,7 +16,7 @@ public class StageGateStoreGetAllPendingTests
     {
         _tempFile = Path.Combine(Path.GetTempPath(), $"test_gates_{Guid.NewGuid()}.db");
         var connString = $"Data Source={_tempFile}";
-        _store = new StageGateStore(connString);
+        _store = new StageGateStore(new SqlDbConnectionFactory(connString));
         await _store.InitializeAsync();
     }
 
@@ -26,7 +26,7 @@ public class StageGateStoreGetAllPendingTests
         try { File.Delete(_tempFile); } catch { /* ignore */ }
     }
 
-    private StageGateStore GetStore() => new StageGateStore($"Data Source={_tempFile}");
+    private StageGateStore GetStore() => new StageGateStore(new SqlDbConnectionFactory($"Data Source={_tempFile}"));
 
     [Test]
     public async Task GetAllPendingAsync_ReturnsOnlyPending()
