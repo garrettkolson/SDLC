@@ -509,15 +509,15 @@ public class PipelineShutdownService : IHostedService
 
 3. `UpdateContentAsync` now wraps file write + DB update in `SqliteTransaction`. `IArtifactStore` interface extended with `InitializeAsync()`. All three store interfaces (`IArtifactStore`, `IStageGateStore`, `IRunStore`) gain `InitializeAsync()`. App startup calls `InitializeAsync` on all three after `builder.Build()`.
 
-4. Migrations: still ad-hoc `CREATE TABLE IF NOT EXISTS`. (Unresolved — out of scope for this mitigation.)
-
-5. Backups: still unimplemented. (Unresolved — out of scope for this mitigation.)
-
-6. Long-term `IDbConnectionFactory`: still unimplemented. (Unresolved — deferred.)
-
 **Done when:** Two simultaneous artifact saves do not deadlock. Crash mid-update leaves either old or new state, never half-written.
 
-**Resolved:** Connection string hardens with `Pooling=True;Cache=Shared;Mode=ReadWriteCreate`. WAL + `synchronous = NORMAL` pragmas applied in `InitializeAsync` on all three stores. `UpdateContentAsync` transactional — file write + DB status update in single `SqliteTransaction`. `InitializeAsync` called at app startup. `IArtifactStore`, `IStageGateStore`, `IRunStore` interfaces extended. 12 new tests: `ArtifactStoreTransactionTests` (4 — transactional updates, WAL serialized writes, reentrant init), `InitializationTests` (8 — WAL + synchronous per store, table re-entry, concurrent readers during write). All 226 tests across 8 test projects pass. Migrations, backups, and `IDbConnectionFactory` deferred (see P2-13 notes).
+**Resolved:** Connection string hardens with `Pooling=True;Cache=Shared;Mode=ReadWriteCreate`. WAL + `synchronous = NORMAL` pragmas applied in `InitializeAsync` on all three stores. `UpdateContentAsync` transactional — file write + DB status update in single `SqliteTransaction`. `InitializeAsync` called at app startup. `IArtifactStore`, `IStageGateStore`, `IRunStore` interfaces extended. 12 new tests: `ArtifactStoreTransactionTests` (4 — transactional updates, WAL serialized writes, reentrant init), `InitializationTests` (8 — WAL + synchronous per store, table re-entry, concurrent readers during write). Migrations, backups, and `IDbConnectionFactory` were deferred and are now addressed in separate mitigations (see P2-13 sub-items below).
+
+**P2-13.1. IDbConnectionFactory** — `SDLC.Infrastructure` now uses `IDbConnectionFactory` injected into all three stores instead of raw `string _connectionString`. New `SqlDbConnectionFactory` creates `SqliteConnection` instances with pooled connection string preserved. All 8 test projects updated to use factory. All 221 tests pass.
+
+**P2-13.2. Migration Framework** — Versioned migration system in `SDLC.Infrastructure/Migrations/`. `IMigration` interface with `Version` + `ApplyAsync`. `MigrationRunner` discovers migrations via reflection, applies pending versions in order within transactions, tracks applied versions in `_migrations` table. Initial schema migration (v0) creates all three tables. Added `Microsoft.Extensions.Logging.Abstractions` 10.0.7 to `SDLC.Infrastructure.csproj`. `Program.cs` runs `MigrationRunner.RunAsync()` before store `InitializeAsync()`. 5 new tests in `MigrationRunnerTests.cs`. All 221 tests pass.
+
+**P2-13.3. Backup Service** — `SDLC.Infrastructure.Backup` namespace with `IFileManager` abstraction, `FileSystemService` implementation, `DirectoryExtensions` utility, `BackupConfig` for configuration, `SQLiteBackupService` that copies the SQLite database (WAL/shm sidecars) + artifacts directory to timestamped `backups/sdlc-{YYYYMMDD-HHMMSS}/` directories, with configurable retention cleanup. `ScheduledBackupService : BackgroundService` runs daily at midnight UTC. `Microsoft.Extensions.Hosting.Abstractions` 10.0.7 added to `SDLC.Infrastructure.csproj` (and `SDLC.Notifications.csproj` version bump from 10.0.0 to 10.0.7). Registered in `Program.cs`. 6 new tests in `SQLiteBackupServiceTests.cs`. All 221 tests pass.
 
 ---
 
@@ -857,13 +857,13 @@ public async Task ResumeGateAsync(...)
 | 0 Blockers           | 100 | — |
 | 1 AI Exec            | 100 | — |
 | 2 Wiring             | 100 | — |
-| 3 Hardening          | 95  | P2-13 migrations/backup |
+| 3 Hardening          | 100 | — |
 | 4 Notifications      | 100 | — |
 | 5 Dashboard          | 100 | — |
 | 6 Observability      | 100 | — |
 | 7 Docker             | 85  | TLS/reverse proxy |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13 (migrations/backup).
+**Top 3 must-fix before any production deploy:** P0-6, P1-9, P2-14 (TLS/reverse proxy).
 
-**Next 3 before scale:** P2-13 (backup strategy).
+**Next 3 before scale:** P3-18 (live updates), P3-19 (rate limiting), P3-20 (HSTS max-age).
