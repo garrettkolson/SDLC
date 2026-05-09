@@ -25,8 +25,7 @@ services:
       SWEAF__BaseUrl: http://host.docker.internal:5100
       ConnectionStrings__ArtifactDb: Data Source=/data/artifacts.db
       ArtifactStore__BasePath: /data/artifacts
-      Notifications__Slack__WebhookBaseUrl: https://hooks.slack.com
-      Notifications__Slack__WebhookPath: ${SLACK_WEBHOOK_PATH}
+      Slack__BaseUrl: ${SLACK_BASE_URL}
       Dashboard__BaseUrl: http://localhost:5200
     volumes:
       - artifact-data:/data

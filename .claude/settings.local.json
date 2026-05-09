@@ -14,7 +14,8 @@
       "Bash(dotnet list *)",
       "Bash(dotnet clean *)",
       "Bash(dotnet --version)",
-      "Bash(dotnet --list-sdks)"
+      "Bash(dotnet --list-sdks)",
+      "Bash(echo \"EXIT CODE: $?\")"
     ]
   }
 }

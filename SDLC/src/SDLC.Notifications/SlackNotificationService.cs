@@ -4,7 +4,7 @@ using SDLC.Infrastructure;
 namespace SDLC.Notifications;
 
 public class SlackNotificationService(
-    HttpClient httpClient,
+    IHttpClientFactory httpClientFactory,
     DashboardUrlBuilder urls)
     : INotificationService
 {
@@ -27,6 +27,6 @@ public class SlackNotificationService(
             }
         };
 
-        await httpClient.PostAsJsonAsync("/webhook/sdlc", payload);
+        await httpClientFactory.CreateClient("slack").PostAsJsonAsync("/webhook/sdlc", payload);
     }
 }

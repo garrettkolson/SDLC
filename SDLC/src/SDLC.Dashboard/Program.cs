@@ -1,3 +1,4 @@
+using Azure.Identity;
 using OpenTelemetry;
 using Serilog;
 using Serilog.Events;
@@ -118,7 +119,66 @@ builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService>(sp =>
         sp.GetRequiredService<IPipelineTelemetry>(),
         sp.GetRequiredService<IPipelineRunner>()));
 
+// Key Vault integration for non-dev environments
+if (!builder.Environment.IsDevelopment())
+{
+    var vaultUri = builder.Configuration["KeyVault:Uri"];
+    if (!string.IsNullOrEmpty(vaultUri))
+    {
+        builder.Configuration.AddAzureKeyVault(
+            new Uri(vaultUri),
+            new DefaultAzureCredential());
+    }
+}
+
 var app = builder.Build();
+
+// Startup validation — fail fast if required secrets are missing or placeholder (non-dev only)
+if (!app.Environment.IsDevelopment())
+{
+    // Docker secrets — resolve _FILE suffix references (Docker/K8s convention)
+    string ResolveSecret(string key)
+    {
+        var val = app.Configuration[key];
+        if (string.IsNullOrEmpty(val)) return val;
+        var fileKey = string.Join("__", key.Split(':')) + "__FILE";
+        var filePath = app.Configuration[fileKey];
+        if (string.IsNullOrEmpty(filePath)) return val;
+        try { return File.ReadAllText(filePath).Trim(); }
+        catch { return val; }
+    }
+
+    var config = app.Configuration;
+    var placeholderPrefixes = new[] { "{", "PLACEHOLDER", "CHANGE_ME", "TODO" };
+    var violations = new List<(string key, string value)>();
+
+    void Check(string key, string label)
+    {
+        var val = ResolveSecret(key);
+        if (string.IsNullOrEmpty(val) || placeholderPrefixes.Any(p => val.Contains(p, StringComparison.OrdinalIgnoreCase)))
+            violations.Add((label, val ?? "(empty)"));
+    }
+
+    Check("Auth:ClientSecret", "OIDC ClientSecret");
+    Check("Slack:BaseUrl", "Slack BaseUrl");
+    Check("SweAf:BaseUrl", "SWE-AF BaseUrl");
+
+    // Check model routing endpoints — any localhost endpoint in production is suspicious
+    var routingConfig = config.GetSection("ModelRouting");
+    foreach (var stage in Enum.GetValues<SDLC.Contracts.SdlcStage>())
+    {
+        var baseUrlKey = $"ModelRouting:StageEndpoints:{stage}:BaseUrl";
+        var baseUrl = config[baseUrlKey];
+        if (baseUrl != null && (baseUrl.Contains("localhost") || baseUrl.Contains("127.0.0.1")))
+            violations.Add(($"ModelEndpoint {stage} (BaseUrl)", baseUrl));
+    }
+
+    if (violations.Count > 0)
+    {
+        var msg = $"Startup validation failed — missing or placeholder secrets:{string.Join("", violations.Select(v => $"\n  - {v.key}: {v.value}"))}";
+        throw new InvalidOperationException(msg);
+    }
+}
 
 // Initialize DB — tables + WAL mode
 using var initScope = app.Services.CreateScope();

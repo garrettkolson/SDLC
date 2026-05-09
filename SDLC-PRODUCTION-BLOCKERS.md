@@ -751,6 +751,8 @@ var path = builder.Configuration["Notifications:Slack:WebhookPath"]
 
 **Done when:** No secret in committed `appsettings*.json`. Boot fails fast with clear error if secret missing.
 
+**Resolved:** `Azure.Extensions.AspNetCore.Configuration.Secrets` + `Azure.Identity` NuGet packages added. Key Vault provider registered in `Program.cs` for non-dev: `AddAzureKeyVault` with `DefaultAzureCredential` when `KeyVault:Uri` is configured. Startup validation (non-dev only) checks `Auth:ClientSecret`, `Slack:BaseUrl`, `SweAf:BaseUrl`, and all `ModelRouting:StageEndpoints:*:BaseUrl` values — rejects empty or placeholder patterns (`{`, `PLACEHOLDER`, `CHANGE_ME`, `TODO`). Docker secrets support: `ResolveSecret` helper resolves `_FILE` suffix per Docker/K8s convention (`Slack:BaseUrl` → `Slack__BaseUrl_FILE`). `ModelEndpoint` already had `ApiKey?` — `AgentKernelFactory` sends `Authorization: Bearer` header when set. `SlackNotificationService` fixed: now uses `IHttpClientFactory.CreateClient("slack")` to get the resilience-enabled client (previously bypassed `ResilientSlackHandler`). `docker-compose.yml` fixed config key: `Notifications__Slack__WebhookBaseUrl` → `Slack__BaseUrl: ${SLACK_BASE_URL}`. 2 test files updated (`SlackNotificationServiceTests`, `CompositeNotificationServiceTests`) to inject `FakeHttpClientFactory`.
+
 ---
 
 ## P3 — Polish
@@ -858,10 +860,10 @@ public async Task ResumeGateAsync(...)
 | 3 Hardening          | 95  | P2-13 migrations/backup |
 | 4 Notifications      | 100 | — |
 | 5 Dashboard          | 100 | — |
-| 6 Observability      | 95  | P2-17 secrets |
+| 6 Observability      | 100 | — |
 | 7 Docker             | 85  | TLS/reverse proxy |
 | 8 Tests              | 100 | — |
 
-**Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13 (migrations/backup), P2-17.
+**Top 5 must-fix before any production deploy:** P0-6, P1-9, P2-13 (migrations/backup).
 
-**Next 3 before scale:** P2-13 (backup strategy), P2-17.
+**Next 3 before scale:** P2-13 (backup strategy).
