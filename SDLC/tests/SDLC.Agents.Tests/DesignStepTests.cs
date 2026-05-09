@@ -88,6 +88,10 @@ public class DesignStepTests
         _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
                    .Returns(
                        (lastResponse + " [UNSATISFACTORY]", TokenUsage.Zero),
+                       ("[UNSATISFACTORY]", TokenUsage.Zero),
+                       (lastResponse + " [UNSATISFACTORY]", TokenUsage.Zero),
+                       ("[UNSATISFACTORY]", TokenUsage.Zero),
+                       (lastResponse + " [UNSATISFACTORY]", TokenUsage.Zero),
                        ("[UNSATISFACTORY]", TokenUsage.Zero));
 
         await new DesignStep().RunAsync(_ctx, _config, _research, _spec, _kernelFactory, _artifacts, telemetry, _budgetTracker);
