@@ -1,5 +1,8 @@
+@using System.Threading
 @page "/runs"
+@implements IDisposable
 @inject SDLC.Dashboard.Services.ISdlcRunService RunService
+@inject IConfiguration Config
 
 <PageTitle>SDLC — Active Runs</PageTitle>
 
@@ -52,9 +55,50 @@ else
 
 @code {
     private IReadOnlyList<SDLC.Dashboard.Services.RunSummary>? runs;
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _cts;
 
     protected override async Task OnInitializedAsync()
     {
         runs = await RunService.GetActiveRunsAsync();
+        StartPolling();
+    }
+
+    private void StartPolling()
+    {
+        _cts = new CancellationTokenSource();
+        var interval = TimeSpan.FromSeconds(int.Parse(Config["Dashboard:RefreshIntervalSeconds"] ?? "5"));
+        _timer = new PeriodicTimer(interval);
+        _ = RefreshLoopAsync();
+    }
+
+    private async Task RefreshLoopAsync()
+    {
+        try
+        {
+            while (await _timer!.WaitForNextTickAsync(_cts.Token))
+            {
+                try
+                {
+                    runs = await RunService.GetActiveRunsAsync();
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch
+                {
+                    // Silently fail — Blazor Server reconnect handles transient disconnects
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on dispose
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _timer?.Dispose();
+        _cts?.Dispose();
     }
 }
