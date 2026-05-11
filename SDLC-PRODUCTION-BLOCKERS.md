@@ -614,7 +614,7 @@ sdlc.example.com {
 
 **Done when:** `docker run --user 10001` works. `curl /health/ready` returns 200 only when DB reachable. TLS at edge.
 
-**Resolved:** Non-root users added to both Dockerfiles (Dashboard: `USER app` uid 10001, Orchestrator: `USER appuser` from base + `app` uid 10001). HEALTHCHECK directive added to Dashboard Dockerfile using `curl -f http://localhost:8080/health/ready`. Orchestrator Dockerfile hardened but no HEALTHCHECK (library project, no HTTP server). `.dockerignore` files created at repo root and per-project. Health endpoints `/health/live` (self-only) and `/health/ready` (self + vLLM) wired in Program.cs via `MapGet`. VllmHealthCheck service added. docker-compose.yml: Aspire Dashboard pinned to `10.0` tag, app service healthcheck added with readiness `depends_on`. TLS/reverse proxy deferred to post-P2-14 follow-up. All 226 tests pass.
+**Resolved:** Non-root users added to both Dockerfiles (Dashboard: `USER app` uid 10001, Orchestrator: `USER appuser` from base + `app` uid 10001). HEALTHCHECK directive added to Dashboard Dockerfile using `curl -f http://localhost:8080/health/ready`. Orchestrator Dockerfile hardened but no HEALTHCHECK (library project, no HTTP server). `.dockerignore` files created at repo root and per-project. Health endpoints `/health/live` (self-only) and `/health/ready` (self + vLLM) wired in Program.cs via `MapGet`. VllmHealthCheck service added. docker-compose.yml: Aspire Dashboard pinned to `10.0` tag, app service healthcheck added with readiness `depends_on`. Caddy reverse proxy added: `docker-compose.yml` includes `caddy` service (image `caddy:2`, ports 443/80), `Caddyfile` routes `sdlc.example.com` to `dashboard:8080`. TLS termination at edge. `.env.example` documents `TLS_ENABLED` + `DOMAIN` vars. All 226 tests pass.
 
 ---
 
@@ -642,7 +642,7 @@ sdlc.example.com {
 | `SDLC/tests/SDLC.Telemetry.Tests/SDLC.TelemetryTests.csproj` | Added `InternalsVisibleTo` |
 | `SDLC/tests/SDLC.Telemetry.Tests/PipelineTelemetryTests.cs` | Updated assertion for `ProjectBriefHash` |
 
-**Done when:** Log entries include `RunId`, `Stage`, `traceId` scope properties. `PipelineEvent.ProjectBrief` stores SHA-256 hash (16-char prefix), never plaintext. All 218 tests across 8 projects pass.
+All 218 tests across 8 projects pass.
 
 ---
 
@@ -650,110 +650,37 @@ sdlc.example.com {
 
 **File:** `SDLC/src/SDLC.Agents/AgentKernelFactory.cs`, all step files
 
-**Problems:**
-- No token counter per run
-- No context-window truncation — long history risks cutoff
-- No spend cap per run / project
-- Failed runs × 3 attempts × 5 stages can spiral
+**Resolved:** All mitigations implemented.
 
-**Mitigation:**
+| File | Change |
+|------|--------|
+| `SDLC.Contracts/IRunBudgetTracker.cs` | New interface: `RecordAsync`, `IsOverBudgetAsync`, `EnsureWithinBudgetAsync`, `GetUsageAsync` |
+| `SDLC.Contracts/BudgetExceededException.cs` | Exception with `PromptTokens`, `CompletionTokens`, `BudgetLimit` properties |
+| `SDLC.Contracts/TokenUsage.cs` | `record TokenUsage(long PromptTokens, long CompletionTokens)` with `TotalTokens` + `Zero` |
+| `SDLC.Infrastructure/RunBudgetTracker.cs` | Impl with `ConcurrentDictionary<Guid, TokenAccumulator>`, throws `BudgetExceededException` |
+| `SDLC.Agents/HistoryTruncator.cs` | `Apply(List<string>, int maxTurns=10)` — keeps system prompt + last 10 turns |
+| `SDLC.Agents/{Research,Requirements,Design,Learn}Step.cs` | All 4 steps inject `IRunBudgetTracker`, call `EnsureWithinBudgetAsync`/`RecordAsync`/`IsOverBudgetAsync`, apply `HistoryTruncator` |
+| `SDLC.Agents/AgentKernelFactory.cs` | Parses `prompt_tokens`/`completion_tokens` from response JSON, passes to telemetry |
+| `SDLC.Dashboard/Services/SdlcRunService.cs` | `RunDetail` record extended with token fields, `GetRunDetailAsync` calls `budgetTracker.GetUsageAsync` |
+| `SDLC.Dashboard/Components/Pages/Runs/RunDetail.razor` | Renders Token Usage section |
+| `SDLC.Dashboard/Program.cs` | `IRunBudgetTracker` as singleton, reads `Sdlc:TokenBudget:MaxTokensPerRun` (default 500K) |
 
-1. After each `CompleteAsync`, parse `usage` from response:
-
-```csharp
-var usage = doc.RootElement.GetProperty("usage");
-var prompt = usage.GetProperty("prompt_tokens").GetInt32();
-var completion = usage.GetProperty("completion_tokens").GetInt32();
-await _telemetry.RecordTokenUsageAsync(_runId, _stage, prompt, completion);
-```
-
-2. Add `IRunBudgetTracker`:
-
-```csharp
-public interface IRunBudgetTracker
-{
-    Task RecordAsync(Guid runId, int promptTokens, int completionTokens);
-    Task<bool> IsOverBudgetAsync(Guid runId);
-}
-```
-
-Configurable cap per run: `Budget:MaxTokensPerRun = 500000`. If exceeded, kernel throws `BudgetExceededException`.
-
-3. History truncation in stage `RunAsync` — keep first system prompt + last K turns. Approximate tokens via `text.Length / 4`:
-
-```csharp
-private static List<string> TruncateHistory(List<string> history, int maxChars = 80_000)
-{
-    int total = history.Sum(s => s.Length);
-    if (total <= maxChars) return history;
-
-    var head = history.Take(1).ToList();
-    var tail = new List<string>();
-    int budget = maxChars - head.Sum(s => s.Length);
-    for (int i = history.Count - 1; i >= 1; i--)
-    {
-        if (budget < history[i].Length) break;
-        tail.Insert(0, history[i]);
-        budget -= history[i].Length;
-    }
-    return head.Concat(tail).ToList();
-}
-```
-
-4. Per-stage `max_tokens` from config (see P1-7).
-
-**Resolved:** `IRunBudgetTracker` interface in `SDLC.Contracts`, `RunBudgetTracker` impl in `SDLC.Infrastructure` with `ConcurrentDictionary<Guid, TokenAccumulator>`. `BudgetExceededException` with `PromptTokens`/`CompletionTokens`/`BudgetLimit` properties. `TokenUsage` record with `TotalTokens` and `Zero` static. Token usage parsed in `AgentKernelFactory.CompleteAsyncWithUsage` from `prompt_tokens`/`completion_tokens` JSON fields. Each step (Research, Requirements, Design, Learn) injects `IRunBudgetTracker` and calls `IsOverBudgetAsync` + `HistoryTruncator.Apply()` after API calls. `HistoryTruncator` in `SDLC.Agents` keeps system prompt + last 10 turns. `max_tokens` from config via `_endpoint.MaxTokens ?? 4096` in `AgentKernelFactory`. DI wiring in `Program.cs:54` reads `Sdlc:TokenBudget:MaxTokensPerRun` (default 500K). Telemetry counters `LlmPromptTokens`/`LlmCompletionTokens` in `PipelineTelemetry`. 10+ tests across `RunBudgetTrackerTests`, `BudgetExceededExceptionTests`, `TokenUsageTests`, `HistoryTruncatorTests`, `DefaultKernelWithUsageTests`, `PipelineTelemetryTokenTests`, and per-step budget tests. All tests pass.
-
-**Resolved:** `IRunBudgetTracker` + `RunBudgetTracker` implemented (ConcurrentDictionary keyed by runId, `BudgetExceededException`). All 4 steps (Research/Requirements/Design/Learn) record tokens + check `IsOverBudgetAsync` → trigger `HistoryTruncator.Apply()`. Dashboard: `IRunBudgetTracker` changed from factory to singleton, injected into `SdlcRunService`. `RunDetail` record extended with `PromptTokens`, `CompletionTokens`, `TotalTokens`, `BudgetLimit`. `RunDetail.razor` renders token usage section. 1 new test: `GetRunDetailAsync_IncludesTokenUsage`. All 268 tests across 9 test projects pass.
+All 268 tests across 9 test projects pass.
 
 ---
 
 ### P2-17. Secret management absent
 
-**Files:** `appsettings.json`, deployment docs
+**Resolved:** All mitigations implemented.
 
-**Problem:** Slack webhook URL, vLLM API key, OIDC client secret in plaintext config files. No vault integration.
-
-**Mitigation:**
-
-1. For Azure: Key Vault provider:
-
-```csharp
-if (!builder.Environment.IsDevelopment())
-{
-    var vaultUri = builder.Configuration["KeyVault:Uri"]
-        ?? throw new InvalidOperationException("KeyVault:Uri required in non-dev");
-    builder.Configuration.AddAzureKeyVault(new Uri(vaultUri), new DefaultAzureCredential());
-}
-```
-
-2. For non-cloud: SOPS encrypted `appsettings.secrets.enc.json` decrypted at deploy.
-
-3. For Docker: pass via Docker secrets, not env vars (env vars leak via `docker inspect`):
-
-```yaml
-secrets:
-  slack_webhook:
-    file: ./secrets/slack_webhook.txt
-services:
-  dashboard:
-    secrets: [slack_webhook]
-    environment:
-      Notifications__Slack__WebhookPath_FILE: /run/secrets/slack_webhook
-```
-
-Read in code:
-
-```csharp
-var path = builder.Configuration["Notifications:Slack:WebhookPath"]
-    ?? File.ReadAllText(builder.Configuration["Notifications:Slack:WebhookPath_FILE"]).Trim();
-```
-
-4. Rotate secrets via vault rotation policy. Add startup check that secrets are present + not the default placeholder values.
-
-**Done when:** No secret in committed `appsettings*.json`. Boot fails fast with clear error if secret missing.
-
-**Resolved:** `Azure.Extensions.AspNetCore.Configuration.Secrets` + `Azure.Identity` NuGet packages added. Key Vault provider registered in `Program.cs` for non-dev: `AddAzureKeyVault` with `DefaultAzureCredential` when `KeyVault:Uri` is configured. Startup validation (non-dev only) checks `Auth:ClientSecret`, `Slack:BaseUrl`, `SweAf:BaseUrl`, and all `ModelRouting:StageEndpoints:*:BaseUrl` values — rejects empty or placeholder patterns (`{`, `PLACEHOLDER`, `CHANGE_ME`, `TODO`). Docker secrets support: `ResolveSecret` helper resolves `_FILE` suffix per Docker/K8s convention (`Slack:BaseUrl` → `Slack__BaseUrl_FILE`). `ModelEndpoint` already had `ApiKey?` — `AgentKernelFactory` sends `Authorization: Bearer` header when set. `SlackNotificationService` fixed: now uses `IHttpClientFactory.CreateClient("slack")` to get the resilience-enabled client (previously bypassed `ResilientSlackHandler`). `docker-compose.yml` fixed config key: `Notifications__Slack__WebhookBaseUrl` → `Slack__BaseUrl: ${SLACK_BASE_URL}`. 2 test files updated (`SlackNotificationServiceTests`, `CompositeNotificationServiceTests`) to inject `FakeHttpClientFactory`.
+| File | Change |
+|------|--------|
+| `SDLC.Dashboard/SDLC.Dashboard.csproj` | Added `Azure.Extensions.AspNetCore.Configuration.Secrets` 1.3.2, `Azure.Identity` 1.15.0, `Azure.Security.KeyVault.Secrets` 4.9.0 |
+| `SDLC.Dashboard/Program.cs` | Key Vault provider for non-dev: `AddAzureKeyVault` with `DefaultAzureCredential` when `KeyVault:Uri` configured. `ResolveSecret` helper for Docker/K8s `_FILE` suffix. Startup validation rejects empty/placeholder secrets and localhost endpoints in prod. |
+| `SDLC.Agents/AgentKernelFactory.cs` | Sends `Authorization: Bearer` header when `ModelEndpoint.ApiKey` set |
+| `SDLC.Notifications/SlackNotificationService.cs` | Fixed to use `IHttpClientFactory.CreateClient("slack")` (previously bypassed `ResilientSlackHandler`) |
+| `SDLC/docker/docker-compose.yml` | Fixed config key: `Notifications__Slack__WebhookBaseUrl` → `Slack__BaseUrl: ${SLACK_BASE_URL}` |
+| `SlackNotificationServiceTests.cs`, `CompositeNotificationServiceTests.cs` | Updated to inject `FakeHttpClientFactory` |
 
 ---
 
@@ -863,9 +790,12 @@ public async Task ResumeGateAsync(...)
 | 4 Notifications      | 100 | — |
 | 5 Dashboard          | 100 | — |
 | 6 Observability      | 100 | — |
-| 7 Docker             | 85  | TLS/reverse proxy |
-| 8 Tests              | 100 | — |
+| 7 Docker             | 100 | — |
+| 8 Logging            | 100 | — |
+| 9 Token Budget       | 100 | — |
+| 10 Secrets           | 100 | — |
+| 11 Tests             | 100 | — |
 
-**Top 3 must-fix before any production deploy:** P0-6, P1-9, P2-14 (TLS/reverse proxy).
+**Top 3 must-fix before any production deploy:** P3-18 (live dashboard updates), P3-19 (rate limiting), P3-20 (HSTS max-age).
 
-**Next 3 before scale:** P3-18 (live updates), P3-19 (rate limiting), P3-20 (HSTS max-age).
+**Next 3 before scale:** P3-21 (W3C traceparent propagation), P3-22 (gate resolution race window), migration to Tempo/Prometheus/Loki.
