@@ -1098,6 +1098,8 @@ Add NuGets: `OpenTelemetry.Instrumentation.AspNetCore`, `OpenTelemetry.Instrumen
 
 **Done when:** Aspire Dashboard / Tempo shows spans for HTTP requests and pipeline stages.
 
+**Resolved:** `OpenTelemetry.Exporter.OpenTelemetryProtocol` + `OpenTelemetry.Instrumentation.SqlClient` + `OpenTelemetry.Instrumentation.Runtime` added. Full OTel wiring: `AddService`, tracing sources with AspNetCore/HttpClient/SqlClient instrumentation + OTLP exporter, metrics with RuntimeInstrumentation + OTLP exporter. `Otel:Endpoint` config key defaults to `http://localhost:4317`. All 269 tests pass across 8 projects.
+
 ---
 
 ### PA-P2-10. RateLimiter memory leak and "anon" bucket collapse
@@ -1372,7 +1374,7 @@ catch
 | **PA-1 Slack errors**| **100** | — |
 | **PA-1 Telemetry**   | **100** | — |
 | **PA-1 Recovery cfg**| **100** | — |
-| **PA-2 OTel**        | **0** | **PA-P2-9** |
+| **PA-2 OTel**        | **100** | — |
 | **PA-2 RateLimit**   | **0** | **PA-P2-10** |
 | **PA-2 BudgetLeak**  | **0** | **PA-P2-11** |
 | **PA-2 HealthCheck** | **0** | **PA-P2-12** |
@@ -1382,4 +1384,4 @@ catch
 | **PA-3 IntParse**    | **0** | **PA-P3-16** |
 | **PA-3 CTS leak**    | **0** | **PA-P3-17** |
 
-**17 new items. 8 resolved (PA-P0-1 through PA-P0-5, PA-P1-6 through PA-P1-8). 9 remaining, 0 ship-stoppers. 5 P2/P3 items left. NOT production ready.**
+**17 new items. 9 resolved (PA-P0-1 through PA-P0-5, PA-P1-6 through PA-P1-8, PA-P2-9). 8 remaining, 0 ship-stoppers. 4 P2/P3 items left. NOT production ready.**

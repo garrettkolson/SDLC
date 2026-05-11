@@ -1,6 +1,10 @@
 using Azure.Identity;
 using Microsoft.AspNetCore.HttpOverrides;
 using OpenTelemetry;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using OpenTelemetry.Metrics;
 using Serilog;
 using Serilog.Events;
 using SDLC.Agents;
@@ -145,10 +149,21 @@ builder.Services.Configure<BackupConfig>(cfg =>
 builder.Services.AddSingleton<SQLiteBackupService>();
 builder.Services.AddSingleton<IFileManager, FileSystemService>();
 builder.Services.AddHostedService<ScheduledBackupService>();
+var otlpEndpoint = builder.Configuration["Otel:Endpoint"] ?? "http://localhost:4317";
+
 builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("SDLC.Dashboard"))
     .WithTracing(tracing => tracing
-        .AddSource("SDLC.Pipeline"))
-    .WithMetrics(metrics => metrics.AddMeter("SDLC"));
+        .AddSource("SDLC.Pipeline")
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddSqlClientInstrumentation()
+        .AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint)))
+    .WithMetrics(metrics => metrics
+        .AddMeter("SDLC.Pipeline")
+        .AddRuntimeInstrumentation()
+        .AddAspNetCoreInstrumentation()
+        .AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint)));
 
 // VllmHealthCheck — used by /health/ready endpoint
 builder.Services.AddSingleton<VllmHealthCheck>();
