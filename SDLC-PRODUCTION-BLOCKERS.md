@@ -794,4 +794,601 @@ All 285 tests across 9 test projects pass.
 | 10 Secrets           | 100 | — |
 | 11 Tests             | 100 | — |
 
-**All blockers resolved. Roadmap 100% complete.**
+~~**All blockers resolved. Roadmap 100% complete.**~~
+
+**Post-implementation audit (2026-05-11) found 17 new issues. 5 are ship-stoppers. NOT production ready.**
+
+---
+
+## Post-Audit Findings — 2026-05-11
+
+Code audit against actual implementation. Previous agent marked all items resolved; the following issues were found in the running code.
+
+---
+
+## PA-P0 — New Ship-Stoppers
+
+### PA-P0-1. Authentication not implemented — P0-3 resolution was false
+
+**File:** `SDLC/src/SDLC.Dashboard/Program.cs`
+
+**Problem:** `Program.cs` has zero authentication wiring. No `AddAuthentication()`, no `AddOpenIdConnect()`, no `UseAuthentication()`, no `UseAuthorization()` in middleware pipeline. Pages carry `[Authorize]` attribute but without auth middleware Blazor Server returns anonymous state on every request. `AuthState.GetAuthenticationStateAsync()` always returns anonymous user. Every gate approver is recorded as `"anonymous"`. Anyone with the URL can approve or reject any gate.
+
+Startup validation (`Program.cs:204`) checks `Auth:ClientSecret` — a key nothing uses. In production this check blocks startup for a feature that was never wired.
+
+**Mitigation:**
+
+1. Add NuGet: `Microsoft.AspNetCore.Authentication.OpenIdConnect`.
+2. In `Program.cs`, before `builder.Build()`:
+```csharp
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
+})
+.AddCookie()
+.AddOpenIdConnect(options =>
+{
+    options.Authority = builder.Configuration["Auth:Authority"]
+        ?? $"https://login.microsoftonline.com/{builder.Configuration["Auth:TenantId"]}/v2.0";
+    options.ClientId = builder.Configuration["Auth:ClientId"]
+        ?? throw new InvalidOperationException("Auth:ClientId required");
+    options.ClientSecret = builder.Configuration["Auth:ClientSecret"]
+        ?? throw new InvalidOperationException("Auth:ClientSecret required");
+    options.ResponseType = "code";
+    options.SaveTokens = true;
+    options.Scope.Add("openid");
+    options.Scope.Add("profile");
+    options.Scope.Add("email");
+});
+builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
+```
+3. In middleware pipeline, add after `UseHttpsRedirection()`:
+```csharp
+app.UseAuthentication();
+app.UseAuthorization();
+```
+4. Extend startup validation to also check `Auth:ClientId` and `Auth:TenantId`.
+5. Remove or guard the current `Check("Auth:ClientSecret", ...)` — it throws on valid prod configs where Key Vault provides the secret under a different path resolution order.
+
+**Done when:** Unauthenticated request to `/gate/{id}` redirects to Entra ID login. Post-login, approve/reject records real `userId` in DB.
+
+---
+
+### PA-P0-2. Fire-and-forget gate resume deadlocks pipeline on any error
+
+**File:** `SDLC/src/SDLC.Dashboard/Services/SdlcRunService.cs:131,142,160`
+
+**Problem:** All three write paths (Approve, Reject, Cancel) fire the runner call unobserved:
+
+```csharp
+Task.Run(() => runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Approved, notes, ct));
+Task.Run(() => runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Rejected, notes, ct));
+Task.Run(() => runner.CancelRunAsync(runId, ct));
+```
+
+If `ResumeGateAsync` throws for any reason (runner throws, DB error, run not found), the exception is silently swallowed. The HTTP response returns 200 OK. The gate is marked resolved in DB but the `TaskCompletionSource` in `_pendingGates` is never set. Pipeline waits forever.
+
+**Mitigation:**
+
+Replace all three with awaited calls. `SdlcRunService` methods are already async:
+
+```csharp
+// ApproveGateAsync — replace Task.Run with:
+await runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Approved, notes, ct);
+
+// RejectGateAsync — replace Task.Run with:
+await runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Rejected, notes, ct);
+
+// CancelRunAsync — replace Task.Run with:
+await runner.CancelRunAsync(runId, ct);
+```
+
+**Done when:** `ResumeGateAsync` exception propagates to HTTP caller as 500. No silent swallow. Pipeline never deadlocks on transient errors.
+
+---
+
+### PA-P0-3. Crash recovery does not resume gate-blocked pipelines
+
+**File:** `SDLC/src/SDLC.Orchestrator/SdlcProcess.cs:138-141`
+
+**Problem:** `RecoverPendingGatesAsync` registers a `TaskCompletionSource` for each pending gate, but adds a dummy `Task.CompletedTask` sentinel to `_activeRuns` instead of a real pipeline task:
+
+```csharp
+_pendingGates[gate.GateId] = tcs;                         // TCS registered
+_activeRuns.TryAdd(gate.RunId, Task.CompletedTask);         // Dummy — no pipeline awaits this TCS
+```
+
+When the gate is approved post-restart, `ResumeGateAsync` resolves the TCS. No pipeline is waiting on it. The run is effectively dead. `AllInFlightTasks()` also filters out `Task.CompletedTask`, so shutdown service won't track these runs either.
+
+P0-6 claims "approach (b) implemented" — only true for runs with no pending gates. Runs blocked on a gate at crash time are unrecoverable.
+
+**Mitigation:**
+
+After recovering TCS entries, actually resume the pipeline for the gate-blocked runs so a real task is waiting on the TCS:
+
+```csharp
+foreach (var gate in pendingGates)
+{
+    var tcs = new TaskCompletionSource<GateResolution>(TaskCreationOptions.RunContinuationsAsynchronously);
+    _pendingGates[gate.GateId] = tcs;
+    // Do NOT add to _activeRuns here — ResumeRunAsync will add the real task
+}
+
+var incompleteRuns = await runStore.GetAllIncompleteAsync();
+foreach (var run in incompleteRuns)
+{
+    // Resume all incomplete runs — for gate-blocked ones, the pipeline will
+    // reach WaitForGateAsync and block on the TCS already registered above
+    logger.LogInformation("Recovering run {RunId} at stage {Stage}", run.RunId, run.CurrentStage);
+    await ResumeRunAsync(run);
+}
+```
+
+This requires `SdlcProcessFactory.ResumeAsync` to re-enter the pipeline at the correct stage and call `WaitForGateAsync` for still-pending gates (already implemented as the gate-blocked path through `StageGateStep`).
+
+**Done when:** Kill process while gate pending → restart → gate visible → approve → pipeline resumes at next stage.
+
+---
+
+### PA-P0-4. ResilientSlackHandler not registered in DI — all notifications fail
+
+**File:** `SDLC/src/SDLC.Dashboard/Program.cs:92`
+
+**Problem:**
+
+```csharp
+builder.Services.AddHttpClient("slack")
+    .AddHttpMessageHandler<SDLC.Notifications.ResilientSlackHandler>()
+```
+
+`AddHttpMessageHandler<T>()` resolves `T` from the DI container at request time. `ResilientSlackHandler` is never registered. First call to `IHttpClientFactory.CreateClient("slack")` throws `InvalidOperationException: No service for type 'ResilientSlackHandler' has been registered`. Exception is caught by `StageGateStep`'s notification catch block and logged. Gate is created but no notification fires. Gate is orphaned indefinitely.
+
+**Mitigation:**
+
+Add registration before `AddHttpClient("slack")`:
+
+```csharp
+builder.Services.AddTransient<SDLC.Notifications.ResilientSlackHandler>();
+```
+
+**Done when:** Slack notification fires on gate creation. `ResilientSlackHandler` retry logic is exercised on 5xx.
+
+---
+
+### PA-P0-5. Orchestrator Dockerfile broken — class library has no entry point
+
+**File:** `SDLC/src/SDLC.Orchestrator/Dockerfile`
+
+**Problems:**
+
+1. `ENTRYPOINT ["dotnet", "SDLC.Orchestrator.dll"]` — `SDLC.Orchestrator` is a class library (no `Main`, no `<OutputType>Exe</OutputType>`). No executable DLL is produced. Container fails to start.
+2. Both Dockerfiles set `USER appuser` in the `base` stage. `appuser` does not exist in `mcr.microsoft.com/dotnet/aspnet:10.0`. The `final` stage inherits this and tries to `RUN groupadd...` as `appuser` — build fails.
+
+**Dashboard Dockerfile fix:**
+```dockerfile
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+EXPOSE 8080
+# No USER here — final stage sets it after creating the user
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY ["SDLC.Dashboard.csproj", "."]
+RUN dotnet restore
+COPY . .
+RUN dotnet publish -c Release -o /app/publish --no-restore
+
+FROM base AS final
+WORKDIR /app
+RUN groupadd -r app && useradd -r -g app -u 10001 app
+USER app
+COPY --from=build --chown=10001:10001 /app/publish .
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -f http://localhost:8080/health/ready || exit 1
+ENTRYPOINT ["dotnet", "SDLC.Dashboard.dll"]
+```
+
+**Orchestrator Dockerfile:** `SDLC.Orchestrator` is a library — it has no standalone process. Remove the Dockerfile entirely, or convert `SDLC.Orchestrator` to an executable project with a `Program.cs` host if a separate process is intended. Clarify architecture first.
+
+**Done when:** `docker build` succeeds for Dashboard. Orchestrator deployment strategy clarified.
+
+---
+
+## PA-P1 — New High Risk
+
+### PA-P1-6. SlackNotificationService swallows HTTP errors
+
+**File:** `SDLC/src/SDLC.Notifications/SlackNotificationService.cs:30`
+
+**Problem:**
+
+```csharp
+await httpClientFactory.CreateClient("slack").PostAsJsonAsync("/webhook/sdlc", payload);
+```
+
+No `.EnsureSuccessStatusCode()`. Slack returning `400 Bad Request` (malformed payload, wrong URL) is silently ignored. `ResilientSlackHandler` only retries 5xx and 429 — 4xx falls through without error. Misconfigured Slack webhook ships undetected.
+
+**Mitigation:**
+
+```csharp
+var response = await httpClientFactory.CreateClient("slack").PostAsJsonAsync("/webhook/sdlc", payload);
+response.EnsureSuccessStatusCode();
+```
+
+Caller (`StageGateStep`) already catches and logs. This just surfaces the error.
+
+**Done when:** Misconfigured Slack webhook URL causes logged error on gate creation instead of silent success.
+
+---
+
+### PA-P1-7. Duplicate telemetry events on every gate action and run start
+
+**Files:** `SDLC/src/SDLC.Dashboard/Services/SdlcRunService.cs`, `SDLC/src/SDLC.Orchestrator/SdlcProcess.cs`
+
+**Problem:** Two call sites record the same events:
+
+- **Gate approved:** `SdlcRunService.ApproveGateAsync` calls `telemetry.RecordGateApprovedAsync`, then calls `runner.ResumeGateAsync` which also calls `telemetry.RecordGateApprovedAsync`. Every approval = 2 events, metrics counter increments twice.
+- **Gate rejected:** Same pattern.
+- **Run started:** `SdlcRunService.StartRunAsync` calls `telemetry.StartPipelineRunAsync`, then `runner.EnqueueAsync` also calls `telemetry.StartPipelineRunAsync`. Every run start = 2 events.
+
+**Mitigation:** Pick one owner per event. Telemetry belongs with the source-of-truth action:
+
+- Remove `RecordGateApprovedAsync` / `RecordGateRejectedAsync` from `PipelineRunnerService.ResumeGateAsync` — already recorded by `SdlcRunService` with userId.
+- Remove `StartPipelineRunAsync` from `PipelineRunnerService.EnqueueAsync` — already recorded by `SdlcRunService.StartRunAsync`.
+
+**Done when:** Each gate action and run start produces exactly one telemetry event. Metrics counters match actual operation counts.
+
+---
+
+### PA-P1-8. ResumeRunAsync loses ProjectBrief on recovery
+
+**File:** `SDLC/src/SDLC.Orchestrator/SdlcProcess.cs:169`
+
+**Problem:**
+
+```csharp
+var config = new SdlcRunConfig { RunId = run.RunId, ProjectBrief = "" };
+```
+
+Recovery reconstructs `SdlcRunConfig` with an empty `ProjectBrief`. If any resumed stage constructs prompts using `config.ProjectBrief` (e.g., context passed through to downstream steps), the AI receives empty input. `RunStore` has no `ProjectBrief` column — original brief is permanently unrecoverable after restart.
+
+**Mitigation:**
+
+1. Add `ProjectBrief TEXT` column to `runs` table (new migration).
+2. `CreateRunAsync` persists brief. `GetRunAsync` / `GetAllIncompleteAsync` return it.
+3. `RunCheckpoint` record gains `ProjectBrief` property.
+4. Recovery uses the stored brief: `new SdlcRunConfig { RunId = run.RunId, ProjectBrief = run.ProjectBrief }`.
+
+**Done when:** Kill process mid-pipeline → restart → resumed run uses original project brief in AI prompts.
+
+---
+
+## PA-P2 — New Infrastructure Gaps
+
+### PA-P2-9. OTel tracing exports nowhere — P1-10 resolution was incomplete
+
+**File:** `SDLC/src/SDLC.Dashboard/Program.cs:145-148`
+
+**Problem:**
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracing => tracing
+        .AddSource("SDLC.Pipeline"))
+    .WithMetrics(metrics => metrics.AddMeter("SDLC"));
+```
+
+No `AddOtlpExporter()`. No `AddAspNetCoreInstrumentation()`, `AddHttpClientInstrumentation()`, or `AddSqlClientInstrumentation()`. Traces are registered but exported to nothing. Metrics similarly incomplete. The roadmap-specified OTLP exporter config was not implemented.
+
+**Mitigation:**
+
+```csharp
+var otlpEndpoint = builder.Configuration["Otel:Endpoint"] ?? "http://localhost:4317";
+
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("SDLC.Dashboard"))
+    .WithTracing(t => t
+        .AddSource("SDLC.Pipeline")
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddSqlClientInstrumentation()
+        .AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint)))
+    .WithMetrics(m => m
+        .AddMeter("SDLC.Pipeline")
+        .AddRuntimeInstrumentation()
+        .AddAspNetCoreInstrumentation()
+        .AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint)));
+```
+
+Add NuGets: `OpenTelemetry.Instrumentation.AspNetCore`, `OpenTelemetry.Instrumentation.Http`, `OpenTelemetry.Instrumentation.SqlClient`, `OpenTelemetry.Exporter.OpenTelemetryProtocol`.
+
+**Done when:** Aspire Dashboard / Tempo shows spans for HTTP requests and pipeline stages.
+
+---
+
+### PA-P2-10. RateLimiter memory leak and "anon" bucket collapse
+
+**File:** `SDLC/src/SDLC.Dashboard/Services/RateLimiter.cs`, `SDLC/src/SDLC.Dashboard/Program.cs:232-234`
+
+**Problems:**
+
+1. `_locks` and `_windows` dictionaries grow without bound. Keys are never evicted. Long-running deployment with many unique IPs → unbounded memory growth.
+2. Any request where both `User.Identity.Name` and `RemoteIpAddress` are null falls into `key = "anon"`. All such requests share one bucket — one client can exhaust it.
+
+**Mitigation:**
+
+Replace custom implementation with ASP.NET Core built-in rate limiting (`Microsoft.AspNetCore.RateLimiting`, available since .NET 7):
+
+```csharp
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("default", o =>
+    {
+        o.PermitLimit = 60;
+        o.Window = TimeSpan.FromMinutes(1);
+        o.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        o.QueueLimit = 0;
+    });
+    options.OnRejected = async (ctx, ct) =>
+    {
+        ctx.HttpContext.Response.Headers.RetryAfter = "60";
+        ctx.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+    };
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
+// In pipeline:
+app.UseRateLimiter();
+```
+
+Key by `HttpContext.User.Identity?.Name ?? HttpContext.Connection.RemoteIpAddress?.ToString() ?? ctx.Connection.Id` (Connection.Id as final fallback prevents shared "anon" bucket). Exempt `/health` paths via `[EnableRateLimiting]` / `[DisableRateLimiting]` attributes or policy check.
+
+**Done when:** No unbounded dictionary growth. `/health` exempt. Each connection isolated.
+
+---
+
+### PA-P2-11. RunBudgetTracker memory leak
+
+**File:** `SDLC/src/SDLC.Infrastructure/RunBudgetTracker.cs`
+
+**Problem:** `_usage` ConcurrentDictionary is never cleaned up. Every completed, failed, or cancelled run's token accumulator stays in memory permanently. Significant memory growth on long-running deployments.
+
+**Mitigation:** Add `RemoveAsync(Guid runId)` to `IRunBudgetTracker`. Call it in `PipelineRunnerService.EnqueueAsync` continuation (after `GetUsageAsync` for final metrics):
+
+```csharp
+// At end of run continuation, after recording final usage:
+await budgetTracker.RemoveAsync(config.RunId);
+```
+
+Same in `ResumeRunAsync` continuation.
+
+**Done when:** `_usage` entry removed on run completion/failure/cancellation. Memory stable over many runs.
+
+---
+
+### PA-P2-12. VllmHealthCheck only pings Research endpoint
+
+**File:** `SDLC/src/SDLC.Dashboard/Services/VllmHealthCheck.cs`
+
+**Problem:** Pipeline routes to 5 different endpoints per stage. Health check calls `routing.GetEndpoint(SdlcStage.Research)` only. Design, Build, Learn endpoints can be down — `/health/ready` still returns 200. Kubernetes readiness probe passes on partial inference failure.
+
+**Mitigation:** Check all unique endpoints (deduplicated by `BaseUrl`):
+
+```csharp
+var endpoints = Enum.GetValues<SdlcStage>()
+    .Select(s => routing.GetEndpoint(s))
+    .DistinctBy(e => e.BaseUrl);
+
+var failures = new List<string>();
+foreach (var endpoint in endpoints)
+{
+    try
+    {
+        var response = await _http.GetAsync($"{endpoint.BaseUrl}/v1/models", ct);
+        if (!response.IsSuccessStatusCode)
+            failures.Add($"{endpoint.BaseUrl}: {response.StatusCode}");
+    }
+    catch (Exception ex)
+    {
+        failures.Add($"{endpoint.BaseUrl}: {ex.Message}");
+    }
+}
+
+return failures.Count == 0
+    ? (true, "All vLLM endpoints reachable")
+    : (false, $"Unreachable: {string.Join(", ", failures)}");
+```
+
+**Done when:** `/health/ready` returns 503 when any unique inference endpoint is down.
+
+---
+
+## PA-P3 — New Polish
+
+### PA-P3-13. Gate reminder re-notifies on every sweep — no deduplication
+
+**File:** `SDLC/src/SDLC.Notifications/GateReminderService.cs`
+
+**Problem:** Every 4h sweep notifies all gates older than 2h. No tracking of prior reminders. A gate pending 48h generates 12 Slack messages. Alert fatigue; Slack channel becomes noise.
+
+**Mitigation:** Track last-notified time per gate. Either add `last_reminded_at` column to `gates` table, or maintain in-memory `HashSet<Guid>` of already-notified gates (acceptable; resets on restart which is fine):
+
+```csharp
+private readonly HashSet<Guid> _notified = new();
+
+// In sweep:
+var toNotify = stale.Where(g => !_notified.Contains(g.GateId)).ToList();
+foreach (var gate in toNotify)
+{
+    await notifications.SendApprovalRequestAsync(gate);
+    _notified.Add(gate.GateId);
+}
+// Remove resolved gates from set on next sweep:
+_notified.IntersectWith(pendingGates.Select(g => g.GateId).ToHashSet());
+```
+
+**Done when:** Each gate receives exactly one reminder notification (two if process restarts).
+
+---
+
+### PA-P3-14. Artifact and backup paths are ephemeral in Docker
+
+**File:** `SDLC/src/SDLC.Dashboard/Program.cs:56,133`
+
+**Problem:** Both paths default to `AppContext.BaseDirectory` = `/app` inside the container:
+
+```csharp
+var artifactDir = Path.Combine(AppContext.BaseDirectory, "artifacts");  // /app/artifacts
+var backupsDir  = Path.Combine(AppContext.BaseDirectory, "backups");    // /app/backups
+```
+
+Container restart wipes `/app`. No volume mount enforcement. Production data loss on any redeploy.
+
+**Mitigation:**
+
+1. Read paths from config with no in-container default fallback:
+```csharp
+var artifactDir = builder.Configuration["Storage:ArtifactsPath"]
+    ?? (builder.Environment.IsDevelopment()
+        ? Path.Combine(AppContext.BaseDirectory, "artifacts")
+        : throw new InvalidOperationException("Storage:ArtifactsPath required in production"));
+```
+2. Mount volumes in `docker-compose.yml`:
+```yaml
+volumes:
+  - sdlc-artifacts:/data/artifacts
+  - sdlc-backups:/data/backups
+```
+3. Add `Storage:ArtifactsPath=/data/artifacts` and `Storage:BackupsPath=/data/backups` to compose env.
+
+**Done when:** Container restart does not lose artifact or backup data.
+
+---
+
+### PA-P3-15. OIDC startup validation incorrectly blocks valid production secrets
+
+**File:** `SDLC/src/SDLC.Dashboard/Program.cs:204`
+
+**Problem:** Startup validation checks `Auth:ClientSecret` but auth is not wired (see PA-P0-1). Once auth is wired, the check also needs `Auth:ClientId` and `Auth:TenantId` — both currently unchecked. Gaps mean a deployment missing `ClientId` starts successfully, then fails on first login with a confusing OIDC error.
+
+**Mitigation:** After PA-P0-1 is resolved, extend validation:
+
+```csharp
+Check("Auth:ClientId",     "OIDC ClientId");
+Check("Auth:ClientSecret", "OIDC ClientSecret");
+Check("Auth:TenantId",     "OIDC TenantId");
+```
+
+**Done when:** Missing any of the three OIDC config keys causes startup failure with a clear message.
+
+---
+
+### PA-P3-16. `int.Parse` in RunDetail polling throws on bad config
+
+**File:** `SDLC/src/SDLC.Dashboard/Components/Pages/Runs/RunDetail.razor:133`
+
+**Problem:**
+
+```csharp
+var interval = TimeSpan.FromSeconds(int.Parse(Config["Dashboard:RefreshIntervalSeconds"] ?? "5"));
+```
+
+`int.Parse` throws `FormatException` if config value is non-numeric. Kills polling loop on component init. Silently caught by outer `catch` that was intended for transient reconnects.
+
+**Mitigation:**
+
+```csharp
+var intervalSeconds = int.TryParse(Config["Dashboard:RefreshIntervalSeconds"], out var s) ? s : 5;
+var interval = TimeSpan.FromSeconds(Math.Clamp(intervalSeconds, 1, 60));
+```
+
+**Done when:** Invalid config value falls back to 5s default with no exception.
+
+---
+
+### PA-P3-17. CTS not disposed when StartAsync throws before TryAdd
+
+**File:** `SDLC/src/SDLC.Orchestrator/SdlcProcess.cs:71-80`
+
+**Problem:**
+
+```csharp
+var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);  // line 71
+_runCancellation[config.RunId] = cts;                           // line 72
+var handle = processFactory.StartAsync(config, cts.Token);      // line 74 — can throw
+if (!_activeRuns.TryAdd(...))
+{
+    cts.Dispose();  // disposed on duplicate-run path
+    ...
+}
+// ContinueWith disposes on completion
+```
+
+If `processFactory.StartAsync` throws before the `TryAdd` guard, `cts` is orphaned in `_runCancellation` and never disposed. Minor resource leak.
+
+**Mitigation:** Wrap in try/finally:
+
+```csharp
+var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+_runCancellation[config.RunId] = cts;
+try
+{
+    var handle = processFactory.StartAsync(config, cts.Token);
+    if (!_activeRuns.TryAdd(config.RunId, handle.Task))
+    {
+        _runCancellation.TryRemove(config.RunId, out _);
+        cts.Dispose();
+        throw new InvalidOperationException($"Run {config.RunId} is already active.");
+    }
+    // ContinueWith takes ownership of cts
+}
+catch
+{
+    _runCancellation.TryRemove(config.RunId, out _);
+    cts.Dispose();
+    throw;
+}
+```
+
+**Done when:** No CTS leak on `StartAsync` failure.
+
+---
+
+## Updated Status Snapshot
+
+| Phase | Done % | Open Items |
+|-------|--------|------------|
+| 0 Blockers           | 100 | — |
+| 1 AI Exec            | 100 | — |
+| 2 Wiring             | 100 | — |
+| 3 Hardening          | 100 | — |
+| 4 Notifications      | 100 | — |
+| 5 Dashboard          | 100 | — |
+| 6 Observability      | 100 | — |
+| 7 Docker             | 100 | — |
+| 8 Logging            | 100 | — |
+| 9 Token Budget       | 100 | — |
+| 10 Secrets           | 100 | — |
+| 11 Tests             | 100 | — |
+| **PA-0 Auth**        | **0** | **PA-P0-1** |
+| **PA-0 Fire-forget** | **0** | **PA-P0-2** |
+| **PA-0 Recovery**    | **0** | **PA-P0-3** |
+| **PA-0 Slack DI**    | **0** | **PA-P0-4** |
+| **PA-0 Docker**      | **0** | **PA-P0-5** |
+| **PA-1 Slack errors**| **0** | **PA-P1-6** |
+| **PA-1 Telemetry**   | **0** | **PA-P1-7** |
+| **PA-1 Recovery cfg**| **0** | **PA-P1-8** |
+| **PA-2 OTel**        | **0** | **PA-P2-9** |
+| **PA-2 RateLimit**   | **0** | **PA-P2-10** |
+| **PA-2 BudgetLeak**  | **0** | **PA-P2-11** |
+| **PA-2 HealthCheck** | **0** | **PA-P2-12** |
+| **PA-3 Reminders**   | **0** | **PA-P3-13** |
+| **PA-3 Volumes**     | **0** | **PA-P3-14** |
+| **PA-3 OIDCVal**     | **0** | **PA-P3-15** |
+| **PA-3 IntParse**    | **0** | **PA-P3-16** |
+| **PA-3 CTS leak**    | **0** | **PA-P3-17** |
+
+**17 new items. 5 ship-stoppers (PA-P0-1 through PA-P0-5). NOT production ready.**
