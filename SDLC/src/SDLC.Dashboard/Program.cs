@@ -13,6 +13,8 @@ using SDLC.Infrastructure.Backup;
 using SDLC.Notifications;
 using SDLC.Orchestrator;
 using SDLC.Telemetry;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -150,6 +152,43 @@ builder.Services.AddOpenTelemetry()
 // VllmHealthCheck — used by /health/ready endpoint
 builder.Services.AddSingleton<VllmHealthCheck>();
 
+// Authentication — OIDC via AWS IAM Identity Center
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
+})
+.AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
+{
+    options.Cookie.Name = "SDLC.Auth";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.ExpireTimeSpan = TimeSpan.FromHours(8);
+    options.SlidingExpiration = true;
+})
+.AddOpenIdConnect(OpenIdConnectDefaults.AuthenticationScheme, options =>
+{
+    var dirId = builder.Configuration["Auth:DirectoryId"];
+    var region = builder.Configuration["Auth:Region"];
+    if (string.IsNullOrEmpty(dirId) || string.IsNullOrEmpty(region))
+        throw new InvalidOperationException(
+            "Auth:DirectoryId and Auth:Region are required for IAM Identity Center.");
+    options.Authority = $"https://{dirId}.sso.{region}.amazonaws.com";
+    options.ClientId = builder.Configuration["Auth:ClientId"]
+        ?? throw new InvalidOperationException("Auth:ClientId required");
+    options.ResponseType = "code";
+    options.SaveTokens = true;
+    options.MapInboundClaims = false;
+    options.TokenValidationParameters.NameClaimType = "name";
+    options.TokenValidationParameters.RoleClaimType = "roles";
+    options.Scope.Add("openid");
+    options.Scope.Add("profile");
+    options.Scope.Add("email");
+});
+builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
+
 // Simple run service — renders data, resolves gates via StageGateStore
 builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService>(sp =>
     new SDLC.Dashboard.Services.SdlcRunService(
@@ -201,7 +240,9 @@ if (!app.Environment.IsDevelopment())
             violations.Add((label, val ?? "(empty)"));
     }
 
-    Check("Auth:ClientSecret", "OIDC ClientSecret");
+    Check("Auth:ClientId", "OIDC ClientId");
+    Check("Auth:DirectoryId", "IAM Identity Center DirectoryId");
+    Check("Auth:Region", "IAM Identity Center Region");
     Check("Slack:BaseUrl", "Slack BaseUrl");
     Check("SweAf:BaseUrl", "SWE-AF BaseUrl");
 
@@ -223,6 +264,15 @@ if (!app.Environment.IsDevelopment())
 }
 
 var rateLimiter = new SDLC.Dashboard.Services.RateLimiter(60, TimeSpan.FromMinutes(1));
+
+// Trust forwarded scheme from Caddy (HTTPS termination at proxy)
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedProto
+});
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Rate limiting — prevent abuse of write-heavy endpoints
 app.Use(async (ctx, next) =>
@@ -256,12 +306,6 @@ app.MapGet("/health/ready", async (VllmHealthCheck vllmCheck) =>
 {
     var (healthy, message) = await vllmCheck.CheckAsync();
     return healthy ? Results.Ok(message) : Results.Problem(message, statusCode: 503);
-});
-
-// Trust forwarded scheme from Caddy (HTTPS termination at proxy)
-app.UseForwardedHeaders(new ForwardedHeadersOptions
-{
-    ForwardedHeaders = ForwardedHeaders.XForwardedProto
 });
 
 // Configure the HTTP request pipeline.

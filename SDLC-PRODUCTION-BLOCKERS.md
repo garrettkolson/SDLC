@@ -816,43 +816,20 @@ Code audit against actual implementation. Previous agent marked all items resolv
 
 Startup validation (`Program.cs:204`) checks `Auth:ClientSecret` — a key nothing uses. In production this check blocks startup for a feature that was never wired.
 
+AWS IAM Identity Center chosen as OIDC provider (public client, no client secret).
+
 **Mitigation:**
 
-1. Add NuGet: `Microsoft.AspNetCore.Authentication.OpenIdConnect`.
-2. In `Program.cs`, before `builder.Build()`:
-```csharp
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
-})
-.AddCookie()
-.AddOpenIdConnect(options =>
-{
-    options.Authority = builder.Configuration["Auth:Authority"]
-        ?? $"https://login.microsoftonline.com/{builder.Configuration["Auth:TenantId"]}/v2.0";
-    options.ClientId = builder.Configuration["Auth:ClientId"]
-        ?? throw new InvalidOperationException("Auth:ClientId required");
-    options.ClientSecret = builder.Configuration["Auth:ClientSecret"]
-        ?? throw new InvalidOperationException("Auth:ClientSecret required");
-    options.ResponseType = "code";
-    options.SaveTokens = true;
-    options.Scope.Add("openid");
-    options.Scope.Add("profile");
-    options.Scope.Add("email");
-});
-builder.Services.AddAuthorization();
-builder.Services.AddCascadingAuthenticationState();
-```
-3. In middleware pipeline, add after `UseHttpsRedirection()`:
-```csharp
-app.UseAuthentication();
-app.UseAuthorization();
-```
-4. Extend startup validation to also check `Auth:ClientId` and `Auth:TenantId`.
-5. Remove or guard the current `Check("Auth:ClientSecret", ...)` — it throws on valid prod configs where Key Vault provides the secret under a different path resolution order.
+1. NuGet `Microsoft.AspNetCore.Authentication.OpenIdConnect` 10.0.0 already present.
+2. OIDC registration in `Program.cs`: `AddAuthentication()` with Cookie + OpenIdConnect, Authority built from `Auth:DirectoryId` + `Auth:Region`.
+3. `UseAuthentication()` + `UseAuthorization()` in middleware pipeline after `UseForwardedHeaders()`, before rate limiter.
+4. Startup validation extended to check `Auth:ClientId`, `Auth:DirectoryId`, `Auth:Region`. `Auth:ClientSecret` check removed.
+5. Global `@attribute [Authorize]` added to `_Imports.razor`. `[Authorize]` added to `NewRun.razor`.
+6. `CascadingAuthenticationState` added to `App.razor` for SignalR circuit auth flow.
+7. `RunDetail.razor` identity extraction wired in `OnInitializedAsync`.
+8. `appsettings.json` Auth section updated: `DirectoryId`, `Region`, `ClientId` (no ClientSecret, no Authority).
 
-**Done when:** Unauthenticated request to `/gate/{id}` redirects to Entra ID login. Post-login, approve/reject records real `userId` in DB.
+**Done when:** Unauthenticated request to `/gate/{id}` redirects to AWS SSO login. Post-login, approve/reject records real `userId` in DB.
 
 ---
 
@@ -1373,7 +1350,7 @@ catch
 | 9 Token Budget       | 100 | — |
 | 10 Secrets           | 100 | — |
 | 11 Tests             | 100 | — |
-| **PA-0 Auth**        | **0** | **PA-P0-1** |
+| **PA-0 Auth**        | **100** | — |
 | **PA-0 Fire-forget** | **0** | **PA-P0-2** |
 | **PA-0 Recovery**    | **0** | **PA-P0-3** |
 | **PA-0 Slack DI**    | **0** | **PA-P0-4** |
@@ -1391,4 +1368,4 @@ catch
 | **PA-3 IntParse**    | **0** | **PA-P3-16** |
 | **PA-3 CTS leak**    | **0** | **PA-P3-17** |
 
-**17 new items. 5 ship-stoppers (PA-P0-1 through PA-P0-5). NOT production ready.**
+**17 new items. 4 ship-stoppers (PA-P0-2 through PA-P0-5). NOT production ready.**

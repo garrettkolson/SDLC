@@ -102,9 +102,15 @@ else
     private SDLC.Dashboard.Services.RunDetail? detail;
     private PeriodicTimer? _timer;
     private CancellationTokenSource? _cts;
+    private string _userId = "anonymous";
+    private string _displayName = "anonymous";
 
     protected override async Task OnInitializedAsync()
     {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirstValue("sub") ?? auth.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "anonymous";
+        _displayName = auth.User.Identity?.Name ?? "anonymous";
+
         detail = await RunService.GetRunDetailAsync(RunId);
         StartPolling();
     }
