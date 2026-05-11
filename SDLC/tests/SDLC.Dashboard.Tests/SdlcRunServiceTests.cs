@@ -391,7 +391,7 @@ public class SdlcRunServiceTests
 
         public Task CreateRunAsync(Guid runId, string projectBrief, string startedAt)
         {
-            _runs[runId] = new RunCheckpoint(runId, "Research", "Running", DateTimeOffset.Parse(startedAt));
+            _runs[runId] = new RunCheckpoint(runId, "Research", "Running", DateTimeOffset.Parse(startedAt), "");
             return Task.CompletedTask;
         }
 
@@ -409,7 +409,7 @@ public class SdlcRunServiceTests
         public Task<List<Guid>> GetAllRunIdsAsync() => Task.FromResult(new List<Guid>());
         public Task UpdateStageAsync(Guid runId, string stage, string status)
         {
-            _runs[runId] = new RunCheckpoint(runId, stage, status, DateTimeOffset.UtcNow);
+            _runs[runId] = new RunCheckpoint(runId, stage, status, DateTimeOffset.UtcNow, "");
             return Task.CompletedTask;
         }
     }

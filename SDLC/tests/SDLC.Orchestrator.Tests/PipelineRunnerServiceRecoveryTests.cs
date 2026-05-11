@@ -49,8 +49,11 @@ public class PipelineRunnerServiceRecoveryTests
         var gateId = Guid.NewGuid();
         var gate = new StageGate { RunId = runId, GateId = gateId, Status = GateStatus.Pending };
         gateStore.GetAllPendingAsync().Returns(Task.FromResult(new List<StageGate> { gate }));
-        runStore.GetAllIncompleteAsync().Returns(Task.FromResult(new List<RunCheckpoint>()));
-        gateStore.GetPendingForRunAsync(runId).Returns(Task.FromResult(new List<StageGate>()));
+        runStore.GetAllIncompleteAsync().Returns(Task.FromResult(new List<RunCheckpoint>
+        {
+            new RunCheckpoint(runId, "Design", "Running", DateTimeOffset.UtcNow, "")
+        }));
+        gateStore.GetPendingForRunAsync(runId).Returns(Task.FromResult(new List<StageGate> { gate }));
 
         var runner = new PipelineRunnerService(factory, logger, telemetry, gateStore, runStore);
 
@@ -70,7 +73,7 @@ public class PipelineRunnerServiceRecoveryTests
         var runId = Guid.NewGuid();
         runStore.GetAllIncompleteAsync().Returns(Task.FromResult(new List<RunCheckpoint>
         {
-            new RunCheckpoint(runId, "Design", "Running", DateTimeOffset.UtcNow)
+            new RunCheckpoint(runId, "Design", "Running", DateTimeOffset.UtcNow, "")
         }));
         gateStore.GetAllPendingAsync().Returns(Task.FromResult(new List<StageGate>()));
 
@@ -135,7 +138,7 @@ public class PipelineRunnerServiceRecoveryTests
         gateStore.GetPendingForRunAsync(runId).Returns(Task.FromResult(new List<StageGate> { gate }));
         runStore.GetAllIncompleteAsync().Returns(Task.FromResult(new List<RunCheckpoint>
         {
-            new RunCheckpoint(runId, "Requirements", "Running", DateTimeOffset.UtcNow)
+            new RunCheckpoint(runId, "Requirements", "Running", DateTimeOffset.UtcNow, "")
         }));
 
         var runner = new PipelineRunnerService(factory, logger, telemetry, gateStore, runStore);

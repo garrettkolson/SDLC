@@ -137,27 +137,14 @@ public class PipelineRunnerService(
         {
             var tcs = new TaskCompletionSource<GateResolution>(TaskCreationOptions.RunContinuationsAsynchronously);
             _pendingGates[gate.GateId] = tcs;
-            _activeRuns.TryAdd(gate.RunId, Task.CompletedTask);
         }
 
         var incompleteRuns = await runStore.GetAllIncompleteAsync();
-        foreach (var run in incompleteRuns)
-        {
-            _activeRuns.TryAdd(run.RunId, Task.CompletedTask);
-        }
 
         foreach (var run in incompleteRuns)
         {
-            var pendingForRun = await gateStore.GetPendingForRunAsync(run.RunId);
-            if (pendingForRun.Count == 0)
-            {
-                logger.LogInformation("Auto-resuming run {RunId} at stage {Stage}", run.RunId, run.CurrentStage);
-                await ResumeRunAsync(run);
-            }
-            else
-            {
-                logger.LogInformation("Run {RunId} blocked on pending gate at stage {Stage}", run.RunId, run.CurrentStage);
-            }
+            logger.LogInformation("Recovering run {RunId} at stage {Stage}", run.RunId, run.CurrentStage);
+            await ResumeRunAsync(run);
         }
 
         if (pendingGates.Count > 0)
@@ -166,11 +153,12 @@ public class PipelineRunnerService(
 
     private async Task ResumeRunAsync(RunCheckpoint run)
     {
-        var config = new SdlcRunConfig { RunId = run.RunId, ProjectBrief = "" };
+        var config = new SdlcRunConfig { RunId = run.RunId, ProjectBrief = run.ProjectBrief ?? "" };
         var cts = CancellationTokenSource.CreateLinkedTokenSource(CancellationToken.None);
         _runCancellation[run.RunId] = cts;
 
         var handle = processFactory.ResumeAsync(config, run.CurrentStage, cts.Token);
+        _activeRuns.TryAdd(run.RunId, handle.Task);
         _ = handle.Task.ContinueWith(async t =>
         {
             using var runScope = LogScope.ForRun(run.RunId);

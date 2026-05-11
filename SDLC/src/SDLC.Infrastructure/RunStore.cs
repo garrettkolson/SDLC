@@ -53,7 +53,7 @@ public class RunStore : IRunStore
         await using var conn = _factory.Create();
         await conn.OpenAsync();
         var row = await conn.QueryFirstOrDefaultAsync(@"
-            SELECT run_id, current_stage, status, started_at
+            SELECT run_id, project_brief, current_stage, status, started_at
             FROM runs WHERE run_id = :runId",
             new { runId = runId.ToString() });
 
@@ -63,7 +63,8 @@ public class RunStore : IRunStore
             Guid.Parse(row.run_id),
             row.current_stage,
             row.status,
-            DateTimeOffset.Parse(row.started_at));
+            DateTimeOffset.Parse(row.started_at),
+            row.project_brief);
     }
 
     public async Task<List<RunCheckpoint>> GetAllIncompleteAsync()
@@ -71,7 +72,7 @@ public class RunStore : IRunStore
         await using var conn = _factory.Create();
         await conn.OpenAsync();
         var rows = await conn.QueryAsync(@"
-            SELECT run_id, current_stage, status, started_at
+            SELECT run_id, project_brief, current_stage, status, started_at
             FROM runs WHERE status IN ('Running', 'Blocked', 'Failed')
             ORDER BY started_at DESC", new { });
 
@@ -79,7 +80,8 @@ public class RunStore : IRunStore
             Guid.Parse(r.run_id),
             r.current_stage,
             r.status,
-            DateTimeOffset.Parse(r.started_at))).ToList();
+            DateTimeOffset.Parse(r.started_at),
+            r.project_brief)).ToList();
     }
 
     public async Task CancelRunAsync(Guid runId)

@@ -274,7 +274,7 @@ public class PipelineRunnerServiceTests
 
         var tcs = new TaskCompletionSource<Task>();
         tcs.SetResult(new Task(() => { }));
-        runStore.GetRunAsync(runId).Returns(Task.FromResult<RunCheckpoint?>(new RunCheckpoint(runId, "Design", "Running", DateTimeOffset.UtcNow)));
+        runStore.GetRunAsync(runId).Returns(Task.FromResult<RunCheckpoint?>(new RunCheckpoint(runId, "Design", "Running", DateTimeOffset.UtcNow, "")));
         runner.GetAllActiveRunIds().Returns(new List<Guid> { runId }.AsReadOnly());
         runner.AllInFlightTasks().Returns(new List<Task> { tcs.Task }.AsReadOnly());
 

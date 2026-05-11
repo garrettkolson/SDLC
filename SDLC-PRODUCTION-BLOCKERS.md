@@ -796,7 +796,7 @@ All 285 tests across 9 test projects pass.
 
 ~~**All blockers resolved. Roadmap 100% complete.**~~
 
-**Post-implementation audit (2026-05-11) found 17 new issues. 2 resolved. 15 remaining, 3 ship-stoppers. NOT production ready.**
+**Post-implementation audit (2026-05-11) found 17 new issues. 3 resolved. 14 remaining, 2 ship-stoppers. NOT production ready.**
 
 ---
 
@@ -910,6 +910,8 @@ foreach (var run in incompleteRuns)
 This requires `SdlcProcessFactory.ResumeAsync` to re-enter the pipeline at the correct stage and call `WaitForGateAsync` for still-pending gates (already implemented as the gate-blocked path through `StageGateStep`).
 
 **Done when:** Kill process while gate pending → restart → gate visible → approve → pipeline resumes at next stage.
+
+**Resolved:** `RecoverPendingGatesAsync` removed `Task.CompletedTask` sentinels. TCS registered for pending gates, no dummy entry. All incomplete runs (including gate-blocked) call `ResumeRunAsync` which adds real task to `_activeRuns` via `TryAdd`. `RunCheckpoint` extended with `ProjectBrief` field. `RunStore` queries persist/return `project_brief` column. `ResumeRunAsync` uses `run.ProjectBrief ?? ""` instead of hardcoded empty. 4 recovery tests pass with updated test data. All 269 tests across 8 projects pass.
 
 ---
 
@@ -1356,7 +1358,7 @@ catch
 | 11 Tests             | 100 | — |
 | **PA-0 Auth**        | **100** | — |
 | **PA-0 Fire-forget** | **100** | — |
-| **PA-0 Recovery**    | **0** | **PA-P0-3** |
+| **PA-0 Recovery**    | **100** | — |
 | **PA-0 Slack DI**    | **0** | **PA-P0-4** |
 | **PA-0 Docker**      | **0** | **PA-P0-5** |
 | **PA-1 Slack errors**| **0** | **PA-P1-6** |
@@ -1372,4 +1374,4 @@ catch
 | **PA-3 IntParse**    | **0** | **PA-P3-16** |
 | **PA-3 CTS leak**    | **0** | **PA-P3-17** |
 
-**17 new items. 2 resolved (PA-P0-1, PA-P0-2). 15 remaining, 3 ship-stoppers (PA-P0-3 through PA-P0-5). NOT production ready.**
+**17 new items. 3 resolved (PA-P0-1, PA-P0-2, PA-P0-3). 14 remaining, 2 ship-stoppers (PA-P0-4, PA-P0-5). NOT production ready.**

@@ -34,7 +34,7 @@ public interface IRunStore
     Task CancelRunAsync(Guid runId);
 }
 
-public record RunCheckpoint(Guid RunId, string CurrentStage, string Status, DateTimeOffset StartedAt);
+public record RunCheckpoint(Guid RunId, string CurrentStage, string Status, DateTimeOffset StartedAt, string? ProjectBrief);
 
 public class StageGate
 {
