@@ -1,4 +1,4 @@
-services:
+﻿services:
 
   aspire-dashboard:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:10.0
@@ -18,15 +18,15 @@ services:
     build:
       context: ../src/SDLC.Dashboard
       dockerfile: Dockerfile
-    ports:
-      - "5200:8080"
+    expose:
+      - "8080"
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
-      SWEAF__BaseUrl: http://host.docker.internal:5100
+      SWEAF__BaseUrl: ${SWEAF__BaseUrl}
       ConnectionStrings__ArtifactDb: Data Source=/data/artifacts.db
       ArtifactStore__BasePath: /data/artifacts
       Slack__BaseUrl: ${SLACK_BASE_URL}
-      Dashboard__BaseUrl: http://localhost:5200
+      Dashboard__BaseUrl: ${DASHBOARD_BASE_URL:-http://localhost:8080}
     volumes:
       - artifact-data:/data
     depends_on:
@@ -39,5 +39,20 @@ services:
       retries: 3
       start_period: 20s
 
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data/caddy
+    environment:
+      SDLC_DOMAIN: ${SDLC_DOMAIN:-localhost}
+    depends_on:
+      - app
+    restart: unless-stopped
+
 volumes:
   artifact-data:
+  caddy-data:

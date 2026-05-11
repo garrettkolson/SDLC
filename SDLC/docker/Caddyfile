@@ -1,0 +1,7 @@
+{
+	env SDLC_DOMAIN
+}
+
+{env SDLC_DOMAIN} {
+	reverse_proxy app:8080
+}

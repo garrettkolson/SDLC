@@ -1,4 +1,5 @@
 using Azure.Identity;
+using Microsoft.AspNetCore.HttpOverrides;
 using OpenTelemetry;
 using Serilog;
 using Serilog.Events;
@@ -41,6 +42,14 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddControllers();
 
+// HSTS — 365-day max-age, preload, subdomains
+builder.Services.AddHsts(o =>
+{
+    o.Preload = true;
+    o.IncludeSubDomains = true;
+    o.MaxAge = TimeSpan.FromDays(365);
+});
+
 var dbConn = builder.Configuration.GetConnectionString("SDLCDb")
     ?? "Data Source=sdlc.db;Pooling=True;Cache=Shared;Mode=ReadWriteCreate;";
 var artifactDir = Path.Combine(AppContext.BaseDirectory, "artifacts");
@@ -61,6 +70,13 @@ builder.Services.AddSingleton<IRunBudgetTracker>(sp => new RunBudgetTracker(toke
 
 // HTTP client and notification service
 builder.Services.AddHttpClient();
+
+// Trust forwarded headers from Caddy reverse proxy
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 builder.Services.AddHttpClient<ISweAfClient>((sp, http) =>
 {
     http.BaseAddress = new Uri(builder.Configuration["SweAf:BaseUrl"]
@@ -215,11 +231,16 @@ app.MapGet("/health/ready", async (VllmHealthCheck vllmCheck) =>
     return healthy ? Results.Ok(message) : Results.Problem(message, statusCode: 503);
 });
 
+// Trust forwarded scheme from Caddy (HTTPS termination at proxy)
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedProto
+});
+
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
