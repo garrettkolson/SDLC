@@ -1201,6 +1201,8 @@ return failures.Count == 0
 
 **Done when:** `/health/ready` returns 503 when any unique inference endpoint is down.
 
+**Resolved:** `VllmHealthCheck.CheckAsync` now queries all 5 stages (`Research`/`Requirements`/`Design`/`Build`/`Learn`), deduplicates by `BaseUrl`, and checks `/v1/models` on each unique endpoint. Returns `(false, "Unreachable: url1, url2, ...")` on partial failure. `HttpClient` injectable for testability. 2 new tests in `VllmHealthCheckTests`: `CheckAsync_AllEndpointsUp_DeduplicatesByBaseUrl` (verifies exactly 2 HTTP calls for 2 unique endpoints), `CheckAsync_OneEndpointDown_ReturnsFailures`. All 30 Dashboard tests pass.
+
 ---
 
 ## PA-P3 — New Polish
@@ -1381,11 +1383,11 @@ catch
 | **PA-2 OTel**        | **100** | — |
 | **PA-2 RateLimit**   | **100** | — |
 | **PA-2 BudgetLeak**  | **100** | — |
-| **PA-2 HealthCheck** | **0** | **PA-P2-12** |
+| **PA-2 HealthCheck** | **100** | — |
 | **PA-3 Reminders**   | **0** | **PA-P3-13** |
 | **PA-3 Volumes**     | **0** | **PA-P3-14** |
 | **PA-3 OIDCVal**     | **0** | **PA-P3-15** |
 | **PA-3 IntParse**    | **0** | **PA-P3-16** |
 | **PA-3 CTS leak**    | **0** | **PA-P3-17** |
 
-**17 new items. 11 resolved (PA-P0-1 through PA-P0-5, PA-P1-6 through PA-P1-8, PA-P2-9, PA-P2-10, PA-P2-11). 6 remaining, 0 ship-stoppers. 1 P2/5 P3 items left. NOT production ready.**
+**17 new items. 12 resolved (PA-P0-1 through PA-P0-5, PA-P1-6 through PA-P1-8, PA-P2-9 through PA-P2-12). 5 remaining, 0 ship-stoppers. 5 P3 items left. NOT production ready.**
