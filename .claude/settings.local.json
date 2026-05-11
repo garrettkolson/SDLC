@@ -14,7 +14,23 @@
       "Bash(dotnet list *)",
       "Bash(dotnet clean *)",
       "Bash(dotnet --version)",
-      "Bash(dotnet --list-sdks)"
+      "Bash(dotnet --list-sdks)",
+      "Bash(Get-ChildItem -Recurse -Filter \"*.sln*\")",
+      "Bash(Select-Object FullName)",
+      "Bash(Get-ChildItem -Path \"D:\\\\Repos\\\\SDLC\\\\SDLC\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(xargs grep -l \"class PipelineRunnerService\\\\|class StageGateStep\")",
+      "Bash(xargs grep -l \"gate\\\\|Gate\")",
+      "Bash(xargs grep -l \"ISweAfClient\\\\|BuildStep\\\\|notimplemented.*Build\")",
+      "Bash(Get-ChildItem *)",
+      "Bash(dotnet nuget list *)",
+      "Bash(findstr OpenTelemetry)",
+      "Bash(wait)",
+      "Bash(dotnet nuget locals *)",
+      "Bash(Select-String -Pattern \"error|Build succeeded|Build FAILED\")",
+      "Bash(Select-Object -Last 30)",
+      "Bash(Select-Object Name)",
+      "Bash(awk '/^### P/{id=$2} /~~### P/{print id \" RESOLVED\"; next} /^[A-Z]/{print id \" OPEN\"}' \"D:/Repos/SDLC/SDLC-PRODUCTION-BLOCKERS.md\")"
     ]
   }
 }
