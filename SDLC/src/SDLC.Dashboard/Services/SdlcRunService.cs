@@ -33,7 +33,11 @@ public record RunDetail(
     bool IsActive,
     SdlcStage LastStage,
     IReadOnlyList<ArtifactSummary> Artifacts,
-    IReadOnlyList<GateSummary> AllGates);
+    IReadOnlyList<GateSummary> AllGates,
+    long PromptTokens,
+    long CompletionTokens,
+    long TotalTokens,
+    long BudgetLimit);
 
 public record ArtifactSummary(
     Guid ArtifactId,
@@ -47,7 +51,8 @@ public class SdlcRunService(
     IStageGateStore gateStore,
     IRunStore runStore,
     IPipelineTelemetry telemetry,
-    IPipelineRunner runner)
+    IPipelineRunner runner,
+    IRunBudgetTracker budgetTracker)
     : ISdlcRunService
 {
     public async Task<IReadOnlyList<RunSummary>> GetActiveRunsAsync(CancellationToken ct = default)
@@ -99,13 +104,19 @@ public class SdlcRunService(
             a.CreatedAt)).ToList();
 
         var lastStage = artifacts.MaxBy(a => a.CreatedAt)?.Stage ?? SdlcStage.Research;
+        var usage = await budgetTracker.GetUsageAsync(runId);
+        var totalTokens = usage.PromptTokens + usage.CompletionTokens;
 
         return new RunDetail(
             runId,
             runner.IsRunActive(runId),
             lastStage,
             artifactSummaries.AsReadOnly(),
-            allGates.AsReadOnly());
+            allGates.AsReadOnly(),
+            usage.PromptTokens,
+            usage.CompletionTokens,
+            totalTokens,
+            budgetTracker.BudgetLimit);
     }
 
     public async Task ApproveGateAsync(Guid gateId, string approverUserId, string approverDisplayName, string? notes, CancellationToken ct = default)

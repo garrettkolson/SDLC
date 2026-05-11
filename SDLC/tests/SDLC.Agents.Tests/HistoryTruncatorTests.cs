@@ -28,10 +28,12 @@ public class HistoryTruncatorTests
             "AI: r4", "Critique: c4",
         };
         var result = HistoryTruncator.Apply(history, maxTurns: 2);
-        result.Should().HaveCount(3);
+        result.Should().HaveCount(5);
         result[0].Should().Be("system prompt");
         result[1].Should().Be("AI: r3");
         result[2].Should().Be("Critique: c3");
+        result[3].Should().Be("AI: r4");
+        result[4].Should().Be("Critique: c4");
     }
 
     [Test]

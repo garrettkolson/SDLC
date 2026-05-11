@@ -97,6 +97,10 @@ public class RequirementsStepTests
         _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
                    .Returns(
                        (lastResponse + " [UNSATISFACTORY]", TokenUsage.Zero),
+                       ("[UNSATISFACTORY]", TokenUsage.Zero),
+                       (lastResponse + " [UNSATISFACTORY]", TokenUsage.Zero),
+                       ("[UNSATISFACTORY]", TokenUsage.Zero),
+                       (lastResponse + " [UNSATISFACTORY]", TokenUsage.Zero),
                        ("[UNSATISFACTORY]", TokenUsage.Zero));
 
         await new RequirementsStep().RunAsync(_ctx, _config, _research, _kernelFactory, _artifacts, telemetry, _budgetTracker);

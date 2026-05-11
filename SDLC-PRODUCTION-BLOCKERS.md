@@ -704,6 +704,8 @@ private static List<string> TruncateHistory(List<string> history, int maxChars =
 
 **Done when:** Run summary shows `total_tokens`, `estimated_cost_usd`. Budget exceedance halts run cleanly.
 
+**Resolved:** `IRunBudgetTracker` + `RunBudgetTracker` implemented (ConcurrentDictionary keyed by runId, `BudgetExceededException`). All 4 steps (Research/Requirements/Design/Learn) record tokens + check `IsOverBudgetAsync` → trigger `HistoryTruncator.Apply()`. Dashboard: `IRunBudgetTracker` changed from factory to singleton, injected into `SdlcRunService`. `RunDetail` record extended with `PromptTokens`, `CompletionTokens`, `TotalTokens`, `BudgetLimit`. `RunDetail.razor` renders token usage section. 1 new test: `GetRunDetailAsync_IncludesTokenUsage`. All 268 tests across 9 test projects pass.
+
 ---
 
 ### P2-17. Secret management absent

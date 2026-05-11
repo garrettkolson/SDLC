@@ -21,6 +21,7 @@ public class SdlcRunServiceGetActiveRunsTests
     private TestGateStore _gateStore = null!;
     private TestRunStore _runStore = null!;
     private IPipelineTelemetry telemetry = null!;
+    private IRunBudgetTracker budgetTracker = null!;
 
     [SetUp]
     public void SetUp()
@@ -29,6 +30,10 @@ public class SdlcRunServiceGetActiveRunsTests
         _gateStore = new TestGateStore();
         _runStore = new TestRunStore();
         telemetry = Substitute.For<IPipelineTelemetry>();
+        budgetTracker = Substitute.For<IRunBudgetTracker>();
+        budgetTracker.GetUsageAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+                     .Returns(Task.FromResult(TokenUsage.Zero));
+        budgetTracker.BudgetLimit.Returns(500_000L);
     }
 
     [Test]
@@ -42,7 +47,7 @@ public class SdlcRunServiceGetActiveRunsTests
         _artifactStore.Add(new RequirementsSpec { RunId = runId2, Stage = SdlcStage.Requirements, Content = "r2" });
         _artifactStore.Add(new ArchitectureRecord { RunId = runId3, Stage = SdlcStage.Design, Content = "r3" });
 
-        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, new TestRunner());
+        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, new TestRunner(), budgetTracker);
         var results = await service.GetActiveRunsAsync();
 
         results.Should().HaveCount(3);
@@ -52,7 +57,7 @@ public class SdlcRunServiceGetActiveRunsTests
     [Test]
     public async Task GetActiveRunsAsync_NoArtifacts_ReturnsEmpty()
     {
-        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, new TestRunner());
+        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, new TestRunner(), budgetTracker);
         var results = await service.GetActiveRunsAsync();
 
         results.Should().BeEmpty();
@@ -65,7 +70,7 @@ public class SdlcRunServiceGetActiveRunsTests
         _artifactStore.Add(new ResearchBrief { RunId = runId, Stage = SdlcStage.Research, Content = "r1" });
         _artifactStore.Add(new ResearchBrief { RunId = runId, Stage = SdlcStage.Research, Content = "r2" });
 
-        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, new TestRunner());
+        var service = new SdlcRunService(_artifactStore, _gateStore, _runStore, telemetry, new TestRunner(), budgetTracker);
         var results = await service.GetActiveRunsAsync();
 
         results.Should().ContainSingle(r => r.RunId == runId);

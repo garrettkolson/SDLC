@@ -88,6 +88,10 @@ public class LearnStepTests
         _fakeKernel.CompleteAsyncWithUsage(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
                    .Returns(
                        (lastResponse + " [UNSATISFACTORY]", TokenUsage.Zero),
+                       ("[UNSATISFACTORY]", TokenUsage.Zero),
+                       (lastResponse + " [UNSATISFACTORY]", TokenUsage.Zero),
+                       ("[UNSATISFACTORY]", TokenUsage.Zero),
+                       (lastResponse + " [UNSATISFACTORY]", TokenUsage.Zero),
                        ("[UNSATISFACTORY]", TokenUsage.Zero));
 
         await new LearnStep().RunAsync(_ctx, _config, _spec, _build, _kernelFactory, _artifacts, telemetry, _budgetTracker);

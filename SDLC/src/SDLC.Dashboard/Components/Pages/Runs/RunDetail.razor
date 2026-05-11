@@ -40,6 +40,18 @@ else
         }
     </div>
 
+    <h4>Token Usage</h4>
+    <div class="list-group mb-4">
+        <div class="list-group-item">
+            <div class="row">
+                <div class="col-md-3"><strong>Prompt Tokens:</strong> @detail.PromptTokens</div>
+                <div class="col-md-3"><strong>Completion Tokens:</strong> @detail.CompletionTokens</div>
+                <div class="col-md-3"><strong>Total Tokens:</strong> @detail.TotalTokens</div>
+                <div class="col-md-3"><strong>Budget Limit:</strong> @detail.BudgetLimit</div>
+            </div>
+        </div>
+    </div>
+
     @if (detail.AllGates.Any())
     {
         <h4>Stage Gates</h4>

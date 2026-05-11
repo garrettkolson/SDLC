@@ -52,7 +52,7 @@ builder.Services.AddSingleton<SDLC.Infrastructure.RunStore>(
 builder.Services.AddSingleton<SDLC.Infrastructure.IRunStore>(sp => sp.GetRequiredService<SDLC.Infrastructure.RunStore>());
 
 var tokenBudget = (long)(builder.Configuration.GetValue<int?>("Sdlc:TokenBudget:MaxTokensPerRun") ?? 500_000);
-builder.Services.AddSingleton<Func<IRunBudgetTracker>>(sp => () => new RunBudgetTracker(tokenBudget));
+builder.Services.AddSingleton<IRunBudgetTracker>(sp => new RunBudgetTracker(tokenBudget));
 
 // HTTP client and notification service
 builder.Services.AddHttpClient();
@@ -116,7 +116,8 @@ builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService>(sp =>
         sp.GetRequiredService<SDLC.Infrastructure.IStageGateStore>(),
         sp.GetRequiredService<SDLC.Infrastructure.IRunStore>(),
         sp.GetRequiredService<IPipelineTelemetry>(),
-        sp.GetRequiredService<IPipelineRunner>()));
+        sp.GetRequiredService<IPipelineRunner>(),
+        sp.GetRequiredService<IRunBudgetTracker>()));
 
 var app = builder.Build();
 
