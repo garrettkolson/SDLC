@@ -160,6 +160,7 @@ builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService>(sp =>
         sp.GetRequiredService<IPipelineRunner>(),
         sp.GetRequiredService<IRunBudgetTracker>()));
 
+
 // Key Vault integration for non-dev environments
 if (!builder.Environment.IsDevelopment())
 {
@@ -220,6 +221,26 @@ if (!app.Environment.IsDevelopment())
         throw new InvalidOperationException(msg);
     }
 }
+
+var rateLimiter = new SDLC.Dashboard.Services.RateLimiter(60, TimeSpan.FromMinutes(1));
+
+// Rate limiting — prevent abuse of write-heavy endpoints
+app.Use(async (ctx, next) =>
+{
+    if (!ctx.Request.Path.StartsWithSegments("/health"))
+    {
+        string key = ctx.User.Identity?.Name
+            ?? ctx.Connection.RemoteIpAddress?.ToString()
+            ?? "anon";
+        if (!rateLimiter.Allow(key))
+        {
+            ctx.Response.Headers.RetryAfter = "60";
+            ctx.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            return;
+        }
+    }
+    await next();
+});
 
 // Run migrations, then initialize DB — WAL mode
 using var initScope = app.Services.CreateScope();

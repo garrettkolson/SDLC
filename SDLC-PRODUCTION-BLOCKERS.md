@@ -736,20 +736,16 @@ All 285 tests across 9 test projects pass.
 
 ### P3-19. No rate limiting
 
-**File:** `SDLC/src/SDLC.Dashboard/Program.cs`
+**File:** `SDLC/src/SDLC.Dashboard/Program.cs`, `SDLC/src/SDLC.Dashboard/Services/RateLimiter.cs`
 
-**Mitigation:**
+**Resolved:** Custom `RateLimiter` middleware class created — fixed window (60 requests/min) keyed by authenticated username or remote IP. Health endpoints exempted. 429 response with `Retry-After: 60` header when limit exceeded.
 
-```csharp
-builder.Services.AddRateLimiter(o =>
-{
-    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            ctx.User.Identity?.Name ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "anon",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1) }));
-});
-app.UseRateLimiter();
-```
+| File | Change |
+|------|--------|
+| `SDLC/src/SDLC.Dashboard/Services/RateLimiter.cs` | New — thread-safe fixed-window rate limiter with per-key locking |
+| `SDLC/src/SDLC.Dashboard/Program.cs` | `RateLimiter` instantiated after `builder.Build()`, middleware `app.Use()` inserted after `UseHttpsRedirection()`, `/health` paths excluded |
+
+**Done when:** 61st request within 1 minute from same IP/user returns 429 with `Retry-After: 60`.
 
 ---
 
@@ -757,16 +753,9 @@ app.UseRateLimiter();
 
 **File:** `SDLC/src/SDLC.Dashboard/Program.cs`
 
-**Mitigation:**
+**Resolved:** `AddHsts` already configured with `MaxAge = TimeSpan.FromDays(365)`, `Preload = true`, `IncludeSubDomains = true` (line 47-52). 365-day max-age is RFC 6797 standard for production.
 
-```csharp
-builder.Services.AddHsts(o =>
-{
-    o.Preload = true;
-    o.IncludeSubDomains = true;
-    o.MaxAge = TimeSpan.FromDays(365);
-});
-```
+**Done when:** HSTS header includes `max-age=31536000; includeSubDomains; preload`.
 
 ---
 
@@ -815,6 +804,6 @@ public async Task ResumeGateAsync(...)
 | 10 Secrets           | 100 | — |
 | 11 Tests             | 100 | — |
 
-**Top 3 must-fix before any production deploy:** P3-19 (rate limiting), P3-20 (HSTS max-age), P3-18 now resolved.
+**Top 3 must-fix before any production deploy:** P3-21 (W3C traceparent propagation), P3-22 (gate resolution race window), migration to Tempo/Prometheus/Loki.
 
 **Next 3 before scale:** P3-21 (W3C traceparent propagation), P3-22 (gate resolution race window), migration to Tempo/Prometheus/Loki.
