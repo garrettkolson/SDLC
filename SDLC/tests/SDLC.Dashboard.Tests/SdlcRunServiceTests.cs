@@ -347,7 +347,7 @@ public class SdlcRunServiceTests
             Task.FromResult(Gates.Values.Where(g => g.Status == GateStatus.Pending).ToList());
     }
 
-    private class TestRunner() : PipelineRunnerService(null!, null!, null!, Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>())
+    private class TestRunner() : PipelineRunnerService(null!, null!, null!, Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>(), Substitute.For<IRunBudgetTracker>())
     {
         private readonly Dictionary<Guid, bool> _activeRuns = new();
         public Guid ResumedGate { get; private set; }

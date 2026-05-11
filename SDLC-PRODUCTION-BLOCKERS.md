@@ -1162,6 +1162,8 @@ Same in `ResumeRunAsync` continuation.
 
 **Done when:** `_usage` entry removed on run completion/failure/cancellation. Memory stable over many runs.
 
+**Resolved:** `RemoveAsync(Guid runId)` added to `IRunBudgetTracker` interface. Implemented in `RunBudgetTracker` using `ConcurrentDictionary.TryRemove`. `PipelineRunnerService` constructor extended with `IRunBudgetTracker budgetTracker` parameter. `await budgetTracker.RemoveAsync(config.RunId, ct)` called in `EnqueueAsync` completion continuation. `await budgetTracker.RemoveAsync(run.RunId, default)` called in `ResumeRunAsync` completion continuation. All 20+ constructor calls across 3 test projects updated with `Substitute.For<IRunBudgetTracker>()`. 85/85 tests pass across all 3 test projects (Orchestrator 41, Dashboard 28, Integration 16).
+
 ---
 
 ### PA-P2-12. VllmHealthCheck only pings Research endpoint
@@ -1378,7 +1380,7 @@ catch
 | **PA-1 Recovery cfg**| **100** | — |
 | **PA-2 OTel**        | **100** | — |
 | **PA-2 RateLimit**   | **100** | — |
-| **PA-2 BudgetLeak**  | **0** | **PA-P2-11** |
+| **PA-2 BudgetLeak**  | **100** | — |
 | **PA-2 HealthCheck** | **0** | **PA-P2-12** |
 | **PA-3 Reminders**   | **0** | **PA-P3-13** |
 | **PA-3 Volumes**     | **0** | **PA-P3-14** |
@@ -1386,4 +1388,4 @@ catch
 | **PA-3 IntParse**    | **0** | **PA-P3-16** |
 | **PA-3 CTS leak**    | **0** | **PA-P3-17** |
 
-**17 new items. 10 resolved (PA-P0-1 through PA-P0-5, PA-P1-6 through PA-P1-8, PA-P2-9, PA-P2-10). 7 remaining, 0 ship-stoppers. 2 P2/5 P3 items left. NOT production ready.**
+**17 new items. 11 resolved (PA-P0-1 through PA-P0-5, PA-P1-6 through PA-P1-8, PA-P2-9, PA-P2-10, PA-P2-11). 6 remaining, 0 ship-stoppers. 1 P2/5 P3 items left. NOT production ready.**

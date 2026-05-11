@@ -43,7 +43,8 @@ public class PipelineRunnerService(
     ILogger<PipelineRunnerService> logger,
     IPipelineTelemetry telemetry,
     IStageGateStore gateStore,
-    IRunStore runStore)
+    IRunStore runStore,
+    IRunBudgetTracker budgetTracker)
     : IPipelineRunner
 {
     private readonly ConcurrentDictionary<Guid, Task> _activeRuns = new();
@@ -104,6 +105,7 @@ public class PipelineRunnerService(
             }
 
             await telemetry.CompletePipelineRunAsync(config.RunId, ct);
+            await budgetTracker.RemoveAsync(config.RunId, ct);
             if (t.IsFaulted)
                 logger.LogError(t.Exception, "Run {RunId} failed", config.RunId);
             else
@@ -176,6 +178,7 @@ public class PipelineRunnerService(
             }
 
             await telemetry.CompletePipelineRunAsync(run.RunId, default);
+            await budgetTracker.RemoveAsync(run.RunId, default);
             if (t.IsFaulted)
                 logger.LogError(t.Exception, "Recovery run {RunId} failed", run.RunId);
             else

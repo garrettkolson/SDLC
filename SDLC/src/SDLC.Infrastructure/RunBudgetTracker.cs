@@ -41,6 +41,12 @@ public class RunBudgetTracker : IRunBudgetTracker
             : TokenUsage.Zero);
     }
 
+    public Task RemoveAsync(Guid runId, CancellationToken ct = default)
+    {
+        _usage.TryRemove(runId, out _);
+        return Task.CompletedTask;
+    }
+
     private class TokenAccumulator
     {
         public long PromptTokens { get; private set; }

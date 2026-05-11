@@ -154,7 +154,7 @@ public class SdlcRunServiceNewMethodsTests
             Task.FromResult(Gates.Values.Where(g => g.Status == GateStatus.Pending).ToList());
     }
 
-    private class CapturingRunner() : PipelineRunnerService(null!, null!, null!, Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>())
+    private class CapturingRunner() : PipelineRunnerService(null!, null!, null!, Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>(), Substitute.For<IRunBudgetTracker>())
     {
         public SdlcRunConfig? EnqueuedConfig { get; private set; }
         public Guid EnqueuedRunId => EnqueuedConfig?.RunId ?? Guid.Empty;

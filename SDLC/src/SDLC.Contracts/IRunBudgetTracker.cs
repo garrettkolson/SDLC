@@ -6,5 +6,6 @@ public interface IRunBudgetTracker
     Task<bool> IsOverBudgetAsync(Guid runId, CancellationToken ct = default);
     Task EnsureWithinBudgetAsync(Guid runId, CancellationToken ct = default);
     Task<TokenUsage> GetUsageAsync(Guid runId, CancellationToken ct = default);
+    Task RemoveAsync(Guid runId, CancellationToken ct = default);
     long BudgetLimit { get; }
 }

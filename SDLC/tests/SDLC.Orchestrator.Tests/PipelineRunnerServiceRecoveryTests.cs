@@ -55,7 +55,7 @@ public class PipelineRunnerServiceRecoveryTests
         }));
         gateStore.GetPendingForRunAsync(runId).Returns(Task.FromResult(new List<StageGate> { gate }));
 
-        var runner = new PipelineRunnerService(factory, logger, telemetry, gateStore, runStore);
+        var runner = new PipelineRunnerService(factory, logger, telemetry, gateStore, runStore, Substitute.For<IRunBudgetTracker>());
 
         await runner.RecoverPendingGatesAsync();
         runner.ActiveRunCount.Should().Be(1);
@@ -77,7 +77,7 @@ public class PipelineRunnerServiceRecoveryTests
         }));
         gateStore.GetAllPendingAsync().Returns(Task.FromResult(new List<StageGate>()));
 
-        var runner = new PipelineRunnerService(factory, logger, telemetry, gateStore, runStore);
+        var runner = new PipelineRunnerService(factory, logger, telemetry, gateStore, runStore, Substitute.For<IRunBudgetTracker>());
 
         await runner.RecoverPendingGatesAsync();
 
@@ -97,7 +97,7 @@ public class PipelineRunnerServiceRecoveryTests
         gateStore.GetAllPendingAsync().Returns(Task.FromResult(new List<StageGate>()));
         runStore.GetAllIncompleteAsync().Returns(Task.FromResult(new List<RunCheckpoint>()));
 
-        var runner = new PipelineRunnerService(factory, logger, telemetry, gateStore, runStore);
+        var runner = new PipelineRunnerService(factory, logger, telemetry, gateStore, runStore, Substitute.For<IRunBudgetTracker>());
 
         await runner.RecoverPendingGatesAsync();
 
@@ -111,7 +111,7 @@ public class PipelineRunnerServiceRecoveryTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(factory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(factory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
 
         var runId = Guid.NewGuid();
         runner.IsRunActive(runId).Should().BeFalse();
@@ -141,7 +141,7 @@ public class PipelineRunnerServiceRecoveryTests
             new RunCheckpoint(runId, "Requirements", "Running", DateTimeOffset.UtcNow, "")
         }));
 
-        var runner = new PipelineRunnerService(factory, logger, telemetry, gateStore, runStore);
+        var runner = new PipelineRunnerService(factory, logger, telemetry, gateStore, runStore, Substitute.For<IRunBudgetTracker>());
 
         await runner.RecoverPendingGatesAsync();
 

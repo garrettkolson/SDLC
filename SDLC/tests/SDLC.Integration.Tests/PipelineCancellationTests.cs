@@ -78,7 +78,7 @@ public class PipelineCancellationTests
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
         var runner = new PipelineRunnerService(processFactory, logger, telemetry,
-            Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>());
+            Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>(), Substitute.For<IRunBudgetTracker>());
 
         await runner.EnqueueAsync(config);
         runner.IsRunActive(runId).Should().BeTrue("pipeline should be tracking the run");
@@ -124,7 +124,7 @@ public class PipelineCancellationTests
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
         var runner = new PipelineRunnerService(processFactory, logger, telemetry,
-            Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>());
+            Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>(), Substitute.For<IRunBudgetTracker>());
 
         await runner.EnqueueAsync(config);
         var receivedCt = await ctsCapture.Task;
@@ -154,7 +154,7 @@ public class PipelineCancellationTests
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
         var runner = new PipelineRunnerService(processFactory, logger, telemetry,
-            Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>());
+            Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>(), Substitute.For<IRunBudgetTracker>());
 
         await runner.EnqueueAsync(config);
 
@@ -183,7 +183,7 @@ public class PipelineCancellationTests
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
         var runner = new PipelineRunnerService(processFactory, logger, telemetry,
-            Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>());
+            Substitute.For<IStageGateStore>(), Substitute.For<IRunStore>(), Substitute.For<IRunBudgetTracker>());
 
         await runner.EnqueueAsync(config);
 

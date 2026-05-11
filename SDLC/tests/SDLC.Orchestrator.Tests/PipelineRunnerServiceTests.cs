@@ -25,7 +25,7 @@ public class PipelineRunnerServiceTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         var config = new SdlcRunConfig { ProjectBrief = "Test project" };
 
         await runner.EnqueueAsync(config);
@@ -42,7 +42,7 @@ public class PipelineRunnerServiceTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         await runner.EnqueueAsync(new SdlcRunConfig { ProjectBrief = "Project A" });
         await runner.EnqueueAsync(new SdlcRunConfig { ProjectBrief = "Project B" });
         await runner.EnqueueAsync(new SdlcRunConfig { ProjectBrief = "Project C" });
@@ -59,7 +59,7 @@ public class PipelineRunnerServiceTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         var config = new SdlcRunConfig { ProjectBrief = "Test" };
 
         await runner.EnqueueAsync(config);
@@ -74,7 +74,7 @@ public class PipelineRunnerServiceTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         runner.IsRunActive(Guid.NewGuid()).Should().BeFalse();
     }
 
@@ -84,7 +84,7 @@ public class PipelineRunnerServiceTests
         var processFactory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         var act = () => runner.ResumeGateAsync(Guid.NewGuid(), Guid.NewGuid(), GateDecision.Approved, null);
 
         await act.Should().ThrowAsync<InvalidOperationException>();
@@ -99,7 +99,7 @@ public class PipelineRunnerServiceTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         var runId = Guid.NewGuid();
         var config1 = new SdlcRunConfig { RunId = runId, ProjectBrief = "Test" };
         await runner.EnqueueAsync(config1);
@@ -116,7 +116,7 @@ public class PipelineRunnerServiceTests
         var processFactory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         var act = () => runner.CancelRunAsync(Guid.NewGuid());
 
         await act.Should().ThrowAsync<InvalidOperationException>();
@@ -132,7 +132,7 @@ public class PipelineRunnerServiceTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         var runId = Guid.NewGuid();
         var config = new SdlcRunConfig { RunId = runId, ProjectBrief = "Test" };
 
@@ -153,7 +153,7 @@ public class PipelineRunnerServiceTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         var runId = Guid.NewGuid();
         var config = new SdlcRunConfig { RunId = runId, ProjectBrief = "Test" };
 
@@ -177,7 +177,7 @@ public class PipelineRunnerServiceTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         var config = new SdlcRunConfig { ProjectBrief = "Test" };
 
         var act = () => runner.EnqueueAsync(config);
@@ -195,7 +195,7 @@ public class PipelineRunnerServiceTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         var config = new SdlcRunConfig { ProjectBrief = "Test" };
 
         await runner.EnqueueAsync(config);
@@ -216,7 +216,7 @@ public class PipelineRunnerServiceTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         var config = new SdlcRunConfig { ProjectBrief = "Test" };
 
         await runner.EnqueueAsync(config);
@@ -237,7 +237,7 @@ public class PipelineRunnerServiceTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
         var config = new SdlcRunConfig { ProjectBrief = "Test" };
 
         await runner.EnqueueAsync(config);
@@ -253,7 +253,7 @@ public class PipelineRunnerServiceTests
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
         telemetry.StartRunActivity(Arg.Any<Guid>()).Returns((Activity?)null);
-        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(processFactory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
 
         var tasks = runner.AllInFlightTasks();
         tasks.Should().BeEmpty();
@@ -267,7 +267,8 @@ public class PipelineRunnerServiceTests
             Substitute.For<ILogger<PipelineRunnerService>>(),
             Substitute.For<IPipelineTelemetry>(),
             CreateGateStoreStub(),
-            CreateRunStoreStub());
+            CreateRunStoreStub(),
+            Substitute.For<IRunBudgetTracker>());
         var runStore = Substitute.For<IRunStore>();
         var logger = Substitute.For<ILogger<PipelineShutdownService>>();
         var runId = Guid.NewGuid();
@@ -293,7 +294,8 @@ public class PipelineRunnerServiceTests
             Substitute.For<ILogger<PipelineRunnerService>>(),
             Substitute.For<IPipelineTelemetry>(),
             CreateGateStoreStub(),
-            CreateRunStoreStub());
+            CreateRunStoreStub(),
+            Substitute.For<IRunBudgetTracker>());
         var runStore = Substitute.For<IRunStore>();
         var logger = Substitute.For<ILogger<PipelineShutdownService>>();
 

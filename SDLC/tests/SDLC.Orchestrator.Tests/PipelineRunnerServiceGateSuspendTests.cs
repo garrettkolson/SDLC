@@ -24,7 +24,7 @@ public class PipelineRunnerServiceGateSuspendTests
         var factory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        var runner = new PipelineRunnerService(factory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(factory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
 
         var runId = Guid.NewGuid();
         var gateId = Guid.NewGuid();
@@ -50,7 +50,7 @@ public class PipelineRunnerServiceGateSuspendTests
         var factory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        var runner = new PipelineRunnerService(factory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(factory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
 
         var runId = Guid.NewGuid();
         var gateId = Guid.NewGuid();
@@ -74,7 +74,7 @@ public class PipelineRunnerServiceGateSuspendTests
         var factory = Substitute.For<ISdlcProcessFactory>();
         var logger = Substitute.For<ILogger<PipelineRunnerService>>();
         var telemetry = Substitute.For<IPipelineTelemetry>();
-        var runner = new PipelineRunnerService(factory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub());
+        var runner = new PipelineRunnerService(factory, logger, telemetry, CreateGateStoreStub(), CreateRunStoreStub(), Substitute.For<IRunBudgetTracker>());
 
         var gateId = Guid.NewGuid();
         using var cts = new CancellationTokenSource();
