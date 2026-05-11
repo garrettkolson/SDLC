@@ -1,10 +1,13 @@
 @page "/runs/{RunId:guid}"
 @using System.Security.Claims
+@using System.Threading
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@implements IDisposable
 @attribute [Authorize]
 @inject AuthenticationStateProvider AuthState
 @inject SDLC.Dashboard.Services.ISdlcRunService RunService
+@inject IConfiguration Config
 
 <PageTitle>Run Detail — @detail?.RunId</PageTitle>
 
@@ -90,9 +93,50 @@ else
 @code {
     [Parameter] public Guid RunId { get; set; }
     private SDLC.Dashboard.Services.RunDetail? detail;
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _cts;
 
     protected override async Task OnInitializedAsync()
     {
         detail = await RunService.GetRunDetailAsync(RunId);
+        StartPolling();
+    }
+
+    private void StartPolling()
+    {
+        _cts = new CancellationTokenSource();
+        var interval = TimeSpan.FromSeconds(int.Parse(Config["Dashboard:RefreshIntervalSeconds"] ?? "5"));
+        _timer = new PeriodicTimer(interval);
+        _ = RefreshLoopAsync();
+    }
+
+    private async Task RefreshLoopAsync()
+    {
+        try
+        {
+            while (await _timer!.WaitForNextTickAsync(_cts.Token))
+            {
+                try
+                {
+                    detail = await RunService.GetRunDetailAsync(RunId);
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch
+                {
+                    // Silently fail — Blazor Server reconnect handles transient disconnects
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on dispose
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _timer?.Dispose();
+        _cts?.Dispose();
     }
 }

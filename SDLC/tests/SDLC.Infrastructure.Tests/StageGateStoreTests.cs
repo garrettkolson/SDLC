@@ -14,7 +14,7 @@ public class StageGateStoreTests
     public async Task SetUp()
     {
         _dbPath = Path.GetTempFileName();
-        _store = new StageGateStore($"Data Source={_dbPath}");
+        _store = new StageGateStore(new SqlDbConnectionFactory($"Data Source={_dbPath}"));
         await _store.InitializeAsync();
     }
 

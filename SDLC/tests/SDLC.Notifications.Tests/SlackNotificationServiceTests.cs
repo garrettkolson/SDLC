@@ -14,7 +14,7 @@ public class SlackNotificationServiceTests
     private FakeHttpHandler _httpHandler = null!;
 
     [NotNull]
-    private HttpClient _httpClient = null!;
+    private IHttpClientFactory _httpClientFactory = null!;
 
     private readonly DashboardUrlBuilder _urlBuilder = new("http://localhost:1234");
 
@@ -22,20 +22,20 @@ public class SlackNotificationServiceTests
     public void SetUp()
     {
         _httpHandler = new FakeHttpHandler();
-        _httpClient = new HttpClient(_httpHandler) { BaseAddress = new Uri("https://hooks.slack.com/services/test") };
+        var httpClient = new HttpClient(_httpHandler) { BaseAddress = new Uri("https://hooks.slack.com/services/test") };
+        _httpClientFactory = new FakeHttpClientFactory(httpClient);
     }
 
     [TearDown]
     public void TearDown()
     {
-        _httpClient.Dispose();
         _httpHandler.Dispose();
     }
 
     [Test]
     public async Task SendApprovalRequestAsync_PostsToWebhook()
     {
-        var service = new SlackNotificationService(_httpClient!, _urlBuilder);
+        var service = new SlackNotificationService(_httpClientFactory!, _urlBuilder);
         var gate = new StageGate
         {
             RunId = Guid.NewGuid(),
@@ -52,7 +52,7 @@ public class SlackNotificationServiceTests
     [Test]
     public async Task SendApprovalRequestAsync_PostsJsonContentType()
     {
-        var service = new SlackNotificationService(_httpClient, _urlBuilder);
+        var service = new SlackNotificationService(_httpClientFactory, _urlBuilder);
         var gate = new StageGate { RunId = Guid.NewGuid(), Stage = SdlcStage.Design, Status = GateStatus.Pending };
 
         await service.SendApprovalRequestAsync(gate);
@@ -63,7 +63,7 @@ public class SlackNotificationServiceTests
     [Test]
     public async Task SendApprovalRequestAsync_IncludesGateIdInPayload()
     {
-        var service = new SlackNotificationService(_httpClient, _urlBuilder);
+        var service = new SlackNotificationService(_httpClientFactory, _urlBuilder);
         var expectedGateId = Guid.NewGuid();
         var gate = new StageGate { GateId = expectedGateId, RunId = Guid.NewGuid(), Stage = SdlcStage.Research, Status = GateStatus.Pending };
 
@@ -76,7 +76,7 @@ public class SlackNotificationServiceTests
     [Test]
     public async Task SendApprovalRequestAsync_IncludesStageInPayload()
     {
-        var service = new SlackNotificationService(_httpClient, _urlBuilder);
+        var service = new SlackNotificationService(_httpClientFactory, _urlBuilder);
         var stage = SdlcStage.Build;
         var gate = new StageGate { RunId = Guid.NewGuid(), Stage = stage, Status = GateStatus.Pending };
 
@@ -90,7 +90,7 @@ public class SlackNotificationServiceTests
     // [Test]
     // public async Task SendApprovalRequestAsync_IncludesNotesInPayload()
     // {
-    //     var service = new SlackNotificationService(_httpClient, _urlBuilder);
+    //     var service = new SlackNotificationService(_httpClientFactory, _urlBuilder);
     //     var notes = "Needs more detail on error handling";
     //     var gate = new StageGate { RunId = Guid.NewGuid(), Stage = SdlcStage.Requirements, Status = GateStatus.Pending, Notes = notes };
     //
@@ -103,12 +103,21 @@ public class SlackNotificationServiceTests
     [Test]
     public async Task SendApprovalRequestAsync_ReturnsSuccessfully_WhenServerReturns200()
     {
-        var service = new SlackNotificationService(_httpClient, _urlBuilder);
+        var service = new SlackNotificationService(_httpClientFactory, _urlBuilder);
         var gate = new StageGate { RunId = Guid.NewGuid(), Stage = SdlcStage.Research, Status = GateStatus.Pending };
 
         var act = () => service.SendApprovalRequestAsync(gate);
 
         await act.Should().NotThrowAsync();
+    }
+
+    private class FakeHttpClientFactory : IHttpClientFactory
+    {
+        private readonly HttpClient _httpClient;
+
+        public FakeHttpClientFactory(HttpClient httpClient) => _httpClient = httpClient;
+
+        public HttpClient CreateClient(string name) => _httpClient;
     }
 
     private class FakeHttpHandler : HttpMessageHandler

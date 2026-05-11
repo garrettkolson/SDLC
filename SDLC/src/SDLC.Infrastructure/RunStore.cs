@@ -5,16 +5,16 @@ namespace SDLC.Infrastructure;
 
 public class RunStore : IRunStore
 {
-    private readonly string _connectionString;
+    private readonly IDbConnectionFactory _factory;
 
-    public RunStore(string connectionString)
+    public RunStore(IDbConnectionFactory factory)
     {
-        _connectionString = connectionString;
+        _factory = factory;
     }
 
     public async Task InitializeAsync()
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         await conn.ExecuteAsync(@"
             CREATE TABLE IF NOT EXISTS runs (
@@ -30,7 +30,7 @@ public class RunStore : IRunStore
 
     public async Task CreateRunAsync(Guid runId, string projectBrief, string startedAt)
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         await conn.ExecuteAsync(@"
             INSERT OR REPLACE INTO runs (run_id, project_brief, current_stage, status, started_at)
@@ -40,7 +40,7 @@ public class RunStore : IRunStore
 
     public async Task UpdateStageAsync(Guid runId, string stage, string status)
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         await conn.ExecuteAsync(@"
             UPDATE runs SET current_stage = :stage, status = :status
@@ -50,7 +50,7 @@ public class RunStore : IRunStore
 
     public async Task<RunCheckpoint?> GetRunAsync(Guid runId)
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         var row = await conn.QueryFirstOrDefaultAsync(@"
             SELECT run_id, current_stage, status, started_at
@@ -68,7 +68,7 @@ public class RunStore : IRunStore
 
     public async Task<List<RunCheckpoint>> GetAllIncompleteAsync()
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         var rows = await conn.QueryAsync(@"
             SELECT run_id, current_stage, status, started_at
@@ -84,7 +84,7 @@ public class RunStore : IRunStore
 
     public async Task CancelRunAsync(Guid runId)
     {
-        using var conn = new SqliteConnection(_connectionString);
+        await using var conn = _factory.Create();
         await conn.OpenAsync();
         await conn.ExecuteAsync(@"
             UPDATE runs SET status = 'Cancelled'

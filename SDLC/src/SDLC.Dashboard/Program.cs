@@ -1,3 +1,4 @@
+using Azure.Identity;
 using OpenTelemetry;
 using Serilog;
 using Serilog.Events;
@@ -6,6 +7,7 @@ using SDLC.Contracts;
 using SDLC.Dashboard.Components;
 using SDLC.Dashboard.Services;
 using SDLC.Infrastructure;
+using SDLC.Infrastructure.Backup;
 using SDLC.Notifications;
 using SDLC.Orchestrator;
 using SDLC.Telemetry;
@@ -43,13 +45,16 @@ var dbConn = builder.Configuration.GetConnectionString("SDLCDb")
     ?? "Data Source=sdlc.db;Pooling=True;Cache=Shared;Mode=ReadWriteCreate;";
 var artifactDir = Path.Combine(AppContext.BaseDirectory, "artifacts");
 
+var dbFactory = new SDLC.Infrastructure.SqlDbConnectionFactory(dbConn);
+builder.Services.AddSingleton<SDLC.Infrastructure.IDbConnectionFactory>(dbFactory);
 builder.Services.AddSingleton<SDLC.Infrastructure.IArtifactStore>(
-    new SDLC.Infrastructure.ArtifactStore(dbConn, artifactDir));
+    new SDLC.Infrastructure.ArtifactStore(dbFactory, artifactDir));
 builder.Services.AddSingleton<SDLC.Infrastructure.IStageGateStore>(
-    new SDLC.Infrastructure.StageGateStore(dbConn));
+    new SDLC.Infrastructure.StageGateStore(dbFactory));
 builder.Services.AddSingleton<SDLC.Infrastructure.RunStore>(
-    new SDLC.Infrastructure.RunStore(dbConn));
+    new SDLC.Infrastructure.RunStore(dbFactory));
 builder.Services.AddSingleton<SDLC.Infrastructure.IRunStore>(sp => sp.GetRequiredService<SDLC.Infrastructure.RunStore>());
+builder.Services.AddSingleton<SDLC.Infrastructure.MigrationRunner>();
 
 var tokenBudget = (long)(builder.Configuration.GetValue<int?>("Sdlc:TokenBudget:MaxTokensPerRun") ?? 500_000);
 builder.Services.AddSingleton<IRunBudgetTracker>(sp => new RunBudgetTracker(tokenBudget));
@@ -101,6 +106,20 @@ builder.Services.AddSingleton<PipelineRunnerService>();
 builder.Services.AddSingleton<IPipelineRunner>(sp => sp.GetRequiredService<PipelineRunnerService>());
 builder.Services.AddHostedService<PipelineRecoveryHostedService>();
 builder.Services.AddHostedService<PipelineShutdownService>();
+
+// Backup service
+var backupsDir = Path.Combine(AppContext.BaseDirectory, "backups");
+builder.Services.Configure<BackupConfig>(cfg =>
+{
+    cfg.BackupsDirectory = backupsDir;
+    cfg.DatabaseFile = "sdlc.db";
+    cfg.ArtifactsDirectory = "artifacts";
+    cfg.RetentionDays = 30;
+    cfg.EnableAutoCleanup = true;
+});
+builder.Services.AddSingleton<SQLiteBackupService>();
+builder.Services.AddSingleton<IFileManager, FileSystemService>();
+builder.Services.AddHostedService<ScheduledBackupService>();
 builder.Services.AddOpenTelemetry()
     .WithTracing(tracing => tracing
         .AddSource("SDLC.Pipeline"))
@@ -119,10 +138,70 @@ builder.Services.AddScoped<SDLC.Dashboard.Services.ISdlcRunService>(sp =>
         sp.GetRequiredService<IPipelineRunner>(),
         sp.GetRequiredService<IRunBudgetTracker>()));
 
+// Key Vault integration for non-dev environments
+if (!builder.Environment.IsDevelopment())
+{
+    var vaultUri = builder.Configuration["KeyVault:Uri"];
+    if (!string.IsNullOrEmpty(vaultUri))
+    {
+        builder.Configuration.AddAzureKeyVault(
+            new Uri(vaultUri),
+            new DefaultAzureCredential());
+    }
+}
+
 var app = builder.Build();
 
-// Initialize DB — tables + WAL mode
+// Startup validation — fail fast if required secrets are missing or placeholder (non-dev only)
+if (!app.Environment.IsDevelopment())
+{
+    // Docker secrets — resolve _FILE suffix references (Docker/K8s convention)
+    string ResolveSecret(string key)
+    {
+        var val = app.Configuration[key];
+        if (string.IsNullOrEmpty(val)) return val;
+        var fileKey = string.Join("__", key.Split(':')) + "__FILE";
+        var filePath = app.Configuration[fileKey];
+        if (string.IsNullOrEmpty(filePath)) return val;
+        try { return File.ReadAllText(filePath).Trim(); }
+        catch { return val; }
+    }
+
+    var config = app.Configuration;
+    var placeholderPrefixes = new[] { "{", "PLACEHOLDER", "CHANGE_ME", "TODO" };
+    var violations = new List<(string key, string value)>();
+
+    void Check(string key, string label)
+    {
+        var val = ResolveSecret(key);
+        if (string.IsNullOrEmpty(val) || placeholderPrefixes.Any(p => val.Contains(p, StringComparison.OrdinalIgnoreCase)))
+            violations.Add((label, val ?? "(empty)"));
+    }
+
+    Check("Auth:ClientSecret", "OIDC ClientSecret");
+    Check("Slack:BaseUrl", "Slack BaseUrl");
+    Check("SweAf:BaseUrl", "SWE-AF BaseUrl");
+
+    // Check model routing endpoints — any localhost endpoint in production is suspicious
+    var routingConfig = config.GetSection("ModelRouting");
+    foreach (var stage in Enum.GetValues<SDLC.Contracts.SdlcStage>())
+    {
+        var baseUrlKey = $"ModelRouting:StageEndpoints:{stage}:BaseUrl";
+        var baseUrl = config[baseUrlKey];
+        if (baseUrl != null && (baseUrl.Contains("localhost") || baseUrl.Contains("127.0.0.1")))
+            violations.Add(($"ModelEndpoint {stage} (BaseUrl)", baseUrl));
+    }
+
+    if (violations.Count > 0)
+    {
+        var msg = $"Startup validation failed — missing or placeholder secrets:{string.Join("", violations.Select(v => $"\n  - {v.key}: {v.value}"))}";
+        throw new InvalidOperationException(msg);
+    }
+}
+
+// Run migrations, then initialize DB — WAL mode
 using var initScope = app.Services.CreateScope();
+await initScope.ServiceProvider.GetRequiredService<SDLC.Infrastructure.MigrationRunner>().RunAsync();
 await initScope.ServiceProvider.GetRequiredService<IArtifactStore>().InitializeAsync();
 await initScope.ServiceProvider.GetRequiredService<IStageGateStore>().InitializeAsync();
 await initScope.ServiceProvider.GetRequiredService<IRunStore>().InitializeAsync();

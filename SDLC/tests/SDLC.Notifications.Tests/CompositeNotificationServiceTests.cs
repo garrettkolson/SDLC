@@ -15,7 +15,7 @@ public class CompositeNotificationServiceTests
     {
         var testEmail = new TestEmailNotificationService();
         var slack = new SlackNotificationService(
-            new HttpClient(new FailingHandler()),
+            new FakeHttpClientFactory(new HttpClient(new FailingHandler())),
             new DashboardUrlBuilder("http://localhost:1234"));
         var service = new CompositeNotificationService(slack, testEmail, null);
 
@@ -37,7 +37,7 @@ public class CompositeNotificationServiceTests
     {
         var testEmail = new TestEmailNotificationService { ShouldFail = true };
         var slack = new SlackNotificationService(
-            new HttpClient(new FailingHandler()),
+            new FakeHttpClientFactory(new HttpClient(new FailingHandler())),
             new DashboardUrlBuilder("http://localhost:1234"));
         var service = new CompositeNotificationService(slack, testEmail, null);
 
@@ -76,5 +76,12 @@ public class CompositeNotificationServiceTests
             _sent = true;
             return Task.CompletedTask;
         }
+    }
+
+    private class FakeHttpClientFactory : IHttpClientFactory
+    {
+        private readonly HttpClient _client;
+        public FakeHttpClientFactory(HttpClient client) => _client = client;
+        public HttpClient CreateClient(string name) => _client;
     }
 }

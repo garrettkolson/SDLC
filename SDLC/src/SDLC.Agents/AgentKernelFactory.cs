@@ -61,6 +61,8 @@ public class DefaultKernel : IKernel
         var content = new StringContent(body, Encoding.UTF8, "application/json");
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions") { Content = content };
+        if (_endpoint.ApiKey is not null)
+            httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _endpoint.ApiKey);
         var response = await _http.SendAsync(httpRequest, HttpCompletionOption.ResponseContentRead, ct);
 
         if (!response.IsSuccessStatusCode)
@@ -115,6 +117,8 @@ public class DefaultKernel : IKernel
         var content = new StringContent(body, Encoding.UTF8, "application/json");
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions") { Content = content };
+        if (_endpoint.ApiKey is not null)
+            httpRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _endpoint.ApiKey);
         var response = await _http.SendAsync(httpRequest, HttpCompletionOption.ResponseContentRead, ct);
 
         if (!response.IsSuccessStatusCode)
