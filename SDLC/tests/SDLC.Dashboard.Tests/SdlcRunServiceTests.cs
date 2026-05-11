@@ -366,6 +366,13 @@ public class SdlcRunServiceTests
         {
             ResumedGate = gateId;
         }
+
+        public override Task CancelRunAsync(Guid runId, CancellationToken ct = default)
+        {
+            if (!_activeRuns.ContainsKey(runId))
+                throw new InvalidOperationException($"No active run for {runId}");
+            return Task.CompletedTask;
+        }
     }
 
     private class TestRunStore : IRunStore

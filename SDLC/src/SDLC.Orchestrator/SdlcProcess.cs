@@ -215,7 +215,7 @@ public class PipelineRunnerService(
     public virtual IReadOnlyCollection<Guid> GetAllActiveRunIds()
         => _activeRuns.Keys.ToList().AsReadOnly();
 
-    public async Task CancelRunAsync(Guid runId, CancellationToken ct = default)
+    public virtual async Task CancelRunAsync(Guid runId, CancellationToken ct = default)
     {
         if (!_activeRuns.ContainsKey(runId))
             throw new InvalidOperationException($"No active run for {runId}");

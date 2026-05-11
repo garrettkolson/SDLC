@@ -128,7 +128,7 @@ public class SdlcRunService(
         await gateStore.ResolveAsync(gateId, GateDecision.Approved, notes, approverUserId, approverDisplayName);
         await telemetry.RecordGateApprovedAsync(gateId, approverUserId, ct);
 
-        Task.Run(() => runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Approved, notes, ct));
+        await runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Approved, notes, ct);
     }
 
     public async Task RejectGateAsync(Guid gateId, string approverUserId, string approverDisplayName, string notes, CancellationToken ct = default)
@@ -139,7 +139,7 @@ public class SdlcRunService(
         await gateStore.ResolveAsync(gateId, GateDecision.Rejected, notes, approverUserId, approverDisplayName);
         await telemetry.RecordGateRejectedAsync(gateId, approverUserId, ct);
 
-        Task.Run(() => runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Rejected, notes, ct));
+        await runner.ResumeGateAsync(gate.RunId, gateId, GateDecision.Rejected, notes, ct);
     }
 
     public async Task<Guid> StartRunAsync(SdlcRunConfig config, CancellationToken ct = default)
@@ -157,7 +157,7 @@ public class SdlcRunService(
         await runStore.CancelRunAsync(runId);
         await telemetry.RecordRunCancelledAsync(runId, ct);
 
-        Task.Run(() => runner.CancelRunAsync(runId, ct));
+        await runner.CancelRunAsync(runId, ct);
     }
 
     public async Task<GateSummary?> GetGateDetailAsync(Guid gateId, CancellationToken ct = default)

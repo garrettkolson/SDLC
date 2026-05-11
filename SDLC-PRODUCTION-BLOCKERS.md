@@ -796,7 +796,7 @@ All 285 tests across 9 test projects pass.
 
 ~~**All blockers resolved. Roadmap 100% complete.**~~
 
-**Post-implementation audit (2026-05-11) found 17 new issues. 5 are ship-stoppers. NOT production ready.**
+**Post-implementation audit (2026-05-11) found 17 new issues. 2 resolved. 15 remaining, 3 ship-stoppers. NOT production ready.**
 
 ---
 
@@ -831,6 +831,8 @@ AWS IAM Identity Center chosen as OIDC provider (public client, no client secret
 
 **Done when:** Unauthenticated request to `/gate/{id}` redirects to AWS SSO login. Post-login, approve/reject records real `userId` in DB.
 
+**Resolved:** OIDC auth with AWS IAM Identity Center wired in `Program.cs` (Cookie + OpenIdConnect, Authority from `Auth:DirectoryId` + `Auth:Region`). `UseAuthentication()` + `UseAuthorization()` in middleware pipeline. Global `@attribute [Authorize]` in `_Imports.razor`. `CascadingAuthenticationState` in `App.razor`. Startup validation checks `Auth:ClientId`, `Auth:DirectoryId`, `Auth:Region` (removed unused `ClientSecret` check). 269 tests pass across 8 projects.
+
 ---
 
 ### PA-P0-2. Fire-and-forget gate resume deadlocks pipeline on any error
@@ -863,6 +865,8 @@ await runner.CancelRunAsync(runId, ct);
 ```
 
 **Done when:** `ResumeGateAsync` exception propagates to HTTP caller as 500. No silent swallow. Pipeline never deadlocks on transient errors.
+
+**Resolved:** All three `Task.Run` calls replaced with `await` in `SdlcRunService.cs` (lines 131, 142, 160). `CancelRunAsync` made virtual in `PipelineRunnerService` for testability. `TestRunner` override added. Exceptions now propagate to HTTP caller as 500. All 269 tests pass across 8 projects.
 
 ---
 
@@ -1351,7 +1355,7 @@ catch
 | 10 Secrets           | 100 | — |
 | 11 Tests             | 100 | — |
 | **PA-0 Auth**        | **100** | — |
-| **PA-0 Fire-forget** | **0** | **PA-P0-2** |
+| **PA-0 Fire-forget** | **100** | — |
 | **PA-0 Recovery**    | **0** | **PA-P0-3** |
 | **PA-0 Slack DI**    | **0** | **PA-P0-4** |
 | **PA-0 Docker**      | **0** | **PA-P0-5** |
@@ -1368,4 +1372,4 @@ catch
 | **PA-3 IntParse**    | **0** | **PA-P3-16** |
 | **PA-3 CTS leak**    | **0** | **PA-P3-17** |
 
-**17 new items. 4 ship-stoppers (PA-P0-2 through PA-P0-5). NOT production ready.**
+**17 new items. 2 resolved (PA-P0-1, PA-P0-2). 15 remaining, 3 ship-stoppers (PA-P0-3 through PA-P0-5). NOT production ready.**
