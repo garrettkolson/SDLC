@@ -78,4 +78,72 @@ public class GateReminderServiceTests
 
         stale.Should().BeEmpty();
     }
+
+    [Test]
+    public async Task Dedup_SameGateNotNotifiedTwice()
+    {
+        var staleGate = new StageGate
+        {
+            RunId = Guid.NewGuid(),
+            GateId = Guid.NewGuid(),
+            Stage = SdlcStage.Research,
+            Status = GateStatus.Pending,
+            CreatedAt = DateTimeOffset.UtcNow.AddHours(-3)
+        };
+        _gateStore.GetAllPendingAsync().Returns(Task.FromResult(new List<StageGate> { staleGate }));
+
+        var service = new GateReminderService(_gateStore, _notifications, _logger);
+
+        await service.RunSweepAsync();
+        service.SeenGates.Should().Contain(staleGate.GateId);
+        await _notifications.Received(1).SendApprovalRequestAsync(Arg.Any<StageGate>());
+
+        await service.RunSweepAsync();
+        await _notifications.Received(1).SendApprovalRequestAsync(Arg.Any<StageGate>()); // still 1, not 2
+    }
+
+    [Test]
+    public async Task Dedup_ResolvedGateReNotifies()
+    {
+        var gateId = Guid.NewGuid();
+        var staleGate = new StageGate
+        {
+            RunId = Guid.NewGuid(),
+            GateId = gateId,
+            Stage = SdlcStage.Research,
+            Status = GateStatus.Pending,
+            CreatedAt = DateTimeOffset.UtcNow.AddHours(-3)
+        };
+
+        _gateStore.GetAllPendingAsync().Returns(Task.FromResult(new List<StageGate> { staleGate }));
+
+        var service = new GateReminderService(_gateStore, _notifications, _logger);
+
+        await service.RunSweepAsync();
+        await _notifications.Received(1).SendApprovalRequestAsync(Arg.Any<StageGate>());
+
+        // Second sweep — dedup prevents re-notify
+        await service.RunSweepAsync();
+        await _notifications.Received(1).SendApprovalRequestAsync(Arg.Any<StageGate>());
+
+        // Simulate gate resolved — set cleared
+        _gateStore.GetAllPendingAsync().Returns(Task.FromResult(new List<StageGate>()));
+        await service.RunSweepAsync();
+        await _notifications.Received(1).SendApprovalRequestAsync(Arg.Any<StageGate>());
+
+        // Gate re-appears pending
+        var newPendingGate = new StageGate
+        {
+            RunId = staleGate.RunId,
+            GateId = gateId,
+            Stage = SdlcStage.Research,
+            Status = GateStatus.Pending,
+            CreatedAt = staleGate.CreatedAt
+        };
+        _gateStore.GetAllPendingAsync().Returns(Task.FromResult(new List<StageGate> { newPendingGate }));
+        await service.RunSweepAsync();
+
+        // Now notified 2 times total
+        await _notifications.Received(2).SendApprovalRequestAsync(Arg.Any<StageGate>());
+    }
 }

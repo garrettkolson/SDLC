@@ -1231,6 +1231,8 @@ _notified.IntersectWith(pendingGates.Select(g => g.GateId).ToHashSet());
 
 **Done when:** Each gate receives exactly one reminder notification (two if process restarts).
 
+**Resolved:** `_notified HashSet<Guid>` tracks already-notified gate IDs. Only gates not in `_notified` are notified. `_notified.IntersectWith(pendingGates)` evicts resolved gates on next sweep. `RunSweepAsync()` extracted for testability. `SeenGates` property exposes state for test assertions. 2 new dedup tests: `Dedup_SameGateNotNotifiedTwice` (verifies exactly 1 notification after 2 sweeps), `Dedup_ResolvedGateReNotifies` (verifies re-notification after gate is resolved then re-added). All 16 Notifications tests pass.
+
 ---
 
 ### PA-P3-14. Artifact and backup paths are ephemeral in Docker
@@ -1384,7 +1386,7 @@ catch
 | **PA-2 RateLimit**   | **100** | — |
 | **PA-2 BudgetLeak**  | **100** | — |
 | **PA-2 HealthCheck** | **100** | — |
-| **PA-3 Reminders**   | **0** | **PA-P3-13** |
+| **PA-3 Reminders**   | **100** | — |
 | **PA-3 Volumes**     | **0** | **PA-P3-14** |
 | **PA-3 OIDCVal**     | **0** | **PA-P3-15** |
 | **PA-3 IntParse**    | **0** | **PA-P3-16** |
