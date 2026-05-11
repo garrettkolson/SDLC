@@ -6,6 +6,7 @@ using Serilog.Events;
 using SDLC.Agents;
 using SDLC.Contracts;
 using SDLC.Dashboard.Components;
+using SDLC.Dashboard.Hubs;
 using SDLC.Dashboard.Services;
 using SDLC.Infrastructure;
 using SDLC.Infrastructure.Backup;
@@ -103,6 +104,11 @@ builder.Services.AddHostedService<SDLC.Notifications.GateReminderService>();
 
 // Telemetry
 builder.Services.AddSingleton<IPipelineTelemetry, PipelineTelemetry>();
+
+// SignalR — live dashboard updates
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<ISignalRPoster, SignalRPoster>();
+builder.Services.AddHostedService<RunNotificationService>();
 
 // Orchestrator
 var modelRouting = builder.Configuration.GetSection("ModelRouting").Get<ModelRoutingConfig>()
@@ -250,6 +256,7 @@ app.UseAntiforgery();
 
 app.MapStaticAssets();
 app.MapControllers();
+app.MapHub<RunStateHub>("/runStateHub");
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

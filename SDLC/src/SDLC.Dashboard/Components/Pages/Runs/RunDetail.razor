@@ -3,6 +3,7 @@
 @using System.Threading
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
+@using SDLC.Dashboard.Components.Pages.Runs
 @implements IDisposable
 @attribute [Authorize]
 @inject AuthenticationStateProvider AuthState
@@ -90,6 +91,12 @@ else
     }
 }
 
+<Runs.HubClient
+    RunId="@RunId"
+    OnGateResolved="OnGateResolved"
+    OnRunStateChanged="OnRunStateChanged"
+/>
+
 @code {
     [Parameter] public Guid RunId { get; set; }
     private SDLC.Dashboard.Services.RunDetail? detail;
@@ -100,6 +107,24 @@ else
     {
         detail = await RunService.GetRunDetailAsync(RunId);
         StartPolling();
+    }
+
+    private async Task OnGateResolved(SDLC.Dashboard.Hubs.GateResolvedMessage msg)
+    {
+        if (detail != null)
+        {
+            detail = await RunService.GetRunDetailAsync(RunId);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnRunStateChanged(SDLC.Dashboard.Hubs.RunStateChangedMessage msg)
+    {
+        if (msg.RunId == RunId)
+        {
+            detail = await RunService.GetRunDetailAsync(RunId);
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private void StartPolling()

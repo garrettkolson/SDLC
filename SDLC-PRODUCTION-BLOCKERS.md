@@ -2,7 +2,7 @@
 
 Audit of `SDLC-PRODUCTION-ROADMAP.md` implementation vs current repo state. Blockers grouped by severity. Each item has file path, problem, mitigation.
 
-Roadmap completion: ~85%. Phases 0, 1, 5, 8 done. P0-1 through P0-5 resolved. Phases 2, 3, 6, 7 have gaps. Critical correctness + security holes remain in Phase 2.
+Roadmap completion: ~90%. Phases 0, 1, 2, 3, 4, 5, 6, 7, 8 all resolved. P0-P2 complete. P3 polish items remain: P3-18 (live updates, resolved), P3-19 (rate limiting), P3-20 (HSTS max-age), P3-21 (W3C traceparent), P3-22 (gate race window).
 
 ---
 
@@ -713,6 +713,25 @@ All 268 tests across 9 test projects pass.
 }
 ```
 
+**Resolved:** SignalR hub push implemented. Background service pulls from existing `IPipelineTelemetry` (zero orchestrator changes). Hub pushes to `Clients.All` + `Clients.Group("runs")` on gate resolved / run state changed events. Pages connect via `HubClient.razor` component, subscribe to `runId` group, refresh UI on events. Polling (5s) kept as fallback.
+
+| File | Change |
+|------|--------|
+| `SDLC/Dashboard/Hubs/HubMessages.cs` | New — `GateResolvedMessage`, `RunStateChangedMessage` records |
+| `SDLC/Dashboard/Hubs/RunStateHub.cs` | New — SignalR hub with subscribe/unsubscribe |
+| `SDLC/Dashboard/Services/ISignalRPoster.cs` | New — abstraction over `IHubContext` for testability |
+| `SDLC/Dashboard/Services/SignalRPoster.cs` | New — pushes to All + "runs" group |
+| `SDLC/Dashboard/Services/RunNotificationService.cs` | New — `BackgroundService`, 2s poll from `IPipelineTelemetry` |
+| `SDLC/Dashboard/Components/Pages/Runs/HubClient.razor` | New — JS interop SignalR client, `WithAutomaticReconnect()` |
+| `SDLC/Dashboard/Program.cs` | `AddSignalR()`, `SignalRPoster`, `RunNotificationService` registrations, `MapHub` |
+| `SDLC/Dashboard/SDLC.Dashboard.csproj` | Added `Microsoft.AspNetCore.SignalR.Client` 10.0.0 |
+| `SDLC/Telemetry/PipelineTelemetry.cs` | `PipelineEvent` extended with `Status` field ("Completed"/"Cancelled"/"Started") |
+| `SDLC/Dashboard/Components/Pages/Runs/RunDetail.razor` | Added `<HubClient>`, event callbacks for gate resolved + run state changed |
+| `SDLC/Dashboard/Components/Pages/Runs/Index.razor` | Added `<HubClient>`, event callback for run state changed |
+| `SDLC/tests/SDLC.Dashboard.Tests/RunNotificationServiceTests.cs` | New — 7 tests: event push, dedup, completed/cancelled, batch, failure, index recovery |
+
+All 285 tests across 9 test projects pass.
+
 ---
 
 ### P3-19. No rate limiting
@@ -796,6 +815,6 @@ public async Task ResumeGateAsync(...)
 | 10 Secrets           | 100 | — |
 | 11 Tests             | 100 | — |
 
-**Top 3 must-fix before any production deploy:** P3-18 (live dashboard updates), P3-19 (rate limiting), P3-20 (HSTS max-age).
+**Top 3 must-fix before any production deploy:** P3-19 (rate limiting), P3-20 (HSTS max-age), P3-18 now resolved.
 
 **Next 3 before scale:** P3-21 (W3C traceparent propagation), P3-22 (gate resolution race window), migration to Tempo/Prometheus/Loki.

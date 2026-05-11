@@ -23,7 +23,8 @@ public record PipelineEvent(
     Guid RunId,
     string? ProjectBriefHash,
     DateTimeOffset Started,
-    DateTimeOffset? Ended);
+    DateTimeOffset? Ended,
+    string Status = "Completed");
 
 public interface IPipelineTelemetry
 {
@@ -98,7 +99,7 @@ public class PipelineTelemetry : IPipelineTelemetry
     public async Task StartPipelineRunAsync(Guid runId, string projectBrief, CancellationToken ct = default)
     {
         SdlcTelemetry.RunsStarted.Add(1);
-        _pipelineEvents.Enqueue(new PipelineEvent(runId, HashProjectBrief(projectBrief), DateTimeOffset.UtcNow, null));
+        _pipelineEvents.Enqueue(new PipelineEvent(runId, HashProjectBrief(projectBrief), DateTimeOffset.UtcNow, null, "Started"));
     }
 
     public static string HashProjectBrief(string brief)
@@ -111,13 +112,13 @@ public class PipelineTelemetry : IPipelineTelemetry
     public async Task CompletePipelineRunAsync(Guid runId, CancellationToken ct = default)
     {
         SdlcTelemetry.RunsCompleted.Add(1);
-        _pipelineEvents.Enqueue(new PipelineEvent(runId, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+        _pipelineEvents.Enqueue(new PipelineEvent(runId, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "Completed"));
     }
 
     public async Task RecordRunCancelledAsync(Guid runId, CancellationToken ct = default)
     {
         SdlcTelemetry.RunsCancelled.Add(1);
-        _pipelineEvents.Enqueue(new PipelineEvent(runId, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+        _pipelineEvents.Enqueue(new PipelineEvent(runId, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "Cancelled"));
     }
 
     public Task RecordTokenUsageAsync(Guid runId, long promptTokens, long completionTokens, CancellationToken ct = default)

@@ -1,0 +1,64 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@implements IAsyncDisposable
+
+@code {
+    [Parameter] public Guid? RunId { get; set; }
+    [Parameter] public EventCallback<SDLC.Dashboard.Hubs.GateResolvedMessage> OnGateResolved { get; set; }
+    [Parameter] public EventCallback<SDLC.Dashboard.Hubs.RunStateChangedMessage> OnRunStateChanged { get; set; }
+
+    private HubConnection? _connection;
+    private bool _connected;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _connected)
+            return;
+
+        _connection = new HubConnectionBuilder()
+            .WithUrl(Nav.ToAbsoluteUri("/runStateHub"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _connection.On<SDLC.Dashboard.Hubs.GateResolvedMessage>("GateResolved", async msg =>
+            await InvokeAsync(async () => await OnGateResolved.InvokeAsync(msg)));
+
+        _connection.On<SDLC.Dashboard.Hubs.RunStateChangedMessage>("RunStateChanged", async msg =>
+            await InvokeAsync(async () => await OnRunStateChanged.InvokeAsync(msg)));
+
+        if (RunId.HasValue)
+            await _connection.InvokeAsync("SubscribeToRun", RunId.Value);
+
+        try
+        {
+            await _connection.StartAsync();
+            _connected = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Fall back to polling — SignalR connect failed
+            _connected = false;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        if (_connected && RunId.HasValue)
+        {
+            _ = _connection!.InvokeAsync("SubscribeToRun", RunId.Value).ContinueWith(
+                t => { if (t.IsFaulted) { /* subscribe failed, polling covers it */ } },
+                TaskScheduler.Default);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { if (_connection != null) await _connection.StopAsync(); }
+        catch { }
+        try { if (_connection != null) await _connection.DisposeAsync(); }
+        catch { }
+    }
+}
