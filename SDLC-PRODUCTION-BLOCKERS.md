@@ -1030,6 +1030,8 @@ Caller (`StageGateStep`) already catches and logs. This just surfaces the error.
 
 **Done when:** Each gate action and run start produces exactly one telemetry event. Metrics counters match actual operation counts.
 
+**Resolved:** `StartPipelineRunAsync` removed from `EnqueueAsync` in `SdlcProcess.cs`. `RecordGateApprovedAsync` / `RecordGateRejectedAsync` removed from `ResumeGateAsync`. Dashboard service owns all 3 telemetry records. Each gate action and run start produces exactly one event. All 269 tests pass across 8 projects.
+
 ---
 
 ### PA-P1-8. ResumeRunAsync loses ProjectBrief on recovery
@@ -1368,8 +1370,8 @@ catch
 | **PA-0 Slack DI**    | **100** | — |
 | **PA-0 Docker**      | **100** | — |
 | **PA-1 Slack errors**| **100** | — |
-| **PA-1 Telemetry**   | **0** | **PA-P1-7** |
-| **PA-1 Recovery cfg**| **0** | **PA-P1-8** |
+| **PA-1 Telemetry**   | **100** | — |
+| **PA-1 Recovery cfg**| **100** | — |
 | **PA-2 OTel**        | **0** | **PA-P2-9** |
 | **PA-2 RateLimit**   | **0** | **PA-P2-10** |
 | **PA-2 BudgetLeak**  | **0** | **PA-P2-11** |
@@ -1380,4 +1382,4 @@ catch
 | **PA-3 IntParse**    | **0** | **PA-P3-16** |
 | **PA-3 CTS leak**    | **0** | **PA-P3-17** |
 
-**17 new items. 6 resolved (PA-P0-1 through PA-P0-5, PA-P1-6). 11 remaining, 0 ship-stoppers. 6 P1/P2/P3 items left. NOT production ready.**
+**17 new items. 8 resolved (PA-P0-1 through PA-P0-5, PA-P1-6 through PA-P1-8). 9 remaining, 0 ship-stoppers. 5 P2/P3 items left. NOT production ready.**

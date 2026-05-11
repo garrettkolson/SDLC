@@ -81,7 +81,6 @@ public class PipelineRunnerService(
         }
 
         logger.LogInformation("Starting SDLC run {RunId}", config.RunId);
-        await telemetry.StartPipelineRunAsync(config.RunId, config.ProjectBrief, ct);
 
         _ = handle.Task.ContinueWith(async t =>
         {
@@ -123,10 +122,6 @@ public class PipelineRunnerService(
         if (_pendingGates.TryRemove(gateId, out var tcs))
         {
             tcs.TrySetResult(new GateResolution(gateId, decision, notes));
-            if (decision == GateDecision.Approved)
-                await telemetry.RecordGateApprovedAsync(gateId, ct: ct);
-            else if (decision == GateDecision.Rejected)
-                await telemetry.RecordGateRejectedAsync(gateId, ct: ct);
         }
     }
 
