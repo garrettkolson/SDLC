@@ -27,6 +27,7 @@ public class SlackNotificationService(
             }
         };
 
-        await httpClientFactory.CreateClient("slack").PostAsJsonAsync("/webhook/sdlc", payload);
+        var response = await httpClientFactory.CreateClient("slack").PostAsJsonAsync("/webhook/sdlc", payload);
+        response.EnsureSuccessStatusCode();
     }
 }

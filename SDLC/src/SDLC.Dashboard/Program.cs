@@ -88,6 +88,7 @@ builder.Services.AddHttpClient<ISweAfClient>((sp, http) =>
 });
 
 // Slack notification with resilience handler
+builder.Services.AddTransient<SDLC.Notifications.ResilientSlackHandler>();
 var slackBaseUrl = builder.Configuration["Slack:BaseUrl"]
     ?? throw new InvalidOperationException("Slack:BaseUrl required");
 builder.Services.AddHttpClient("slack")
