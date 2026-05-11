@@ -91,6 +91,11 @@ builder.Services.AddHttpClient<ISweAfClient>((sp, http) =>
     http.Timeout = TimeSpan.FromMinutes(30);
 });
 
+// Rate limiting — fixed window, 60 req/min keyed by user or IP
+builder.Services.AddSingleton<SDLC.Dashboard.Services.RateLimiter>(
+    new SDLC.Dashboard.Services.RateLimiter(60, TimeSpan.FromMinutes(1)));
+builder.Services.AddHostedService<RateLimiterCleanupService>();
+
 // Slack notification with resilience handler
 builder.Services.AddTransient<SDLC.Notifications.ResilientSlackHandler>();
 var slackBaseUrl = builder.Configuration["Slack:BaseUrl"]
@@ -279,8 +284,6 @@ if (!app.Environment.IsDevelopment())
     }
 }
 
-var rateLimiter = new SDLC.Dashboard.Services.RateLimiter(60, TimeSpan.FromMinutes(1));
-
 // Trust forwarded scheme from Caddy (HTTPS termination at proxy)
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
@@ -297,7 +300,8 @@ app.Use(async (ctx, next) =>
     {
         string key = ctx.User.Identity?.Name
             ?? ctx.Connection.RemoteIpAddress?.ToString()
-            ?? "anon";
+            ?? ctx.Connection.Id;
+        var rateLimiter = ctx.RequestServices.GetRequiredService<SDLC.Dashboard.Services.RateLimiter>();
         if (!rateLimiter.Allow(key))
         {
             ctx.Response.Headers.RetryAfter = "60";

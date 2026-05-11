@@ -1141,6 +1141,8 @@ Key by `HttpContext.User.Identity?.Name ?? HttpContext.Connection.RemoteIpAddres
 
 **Done when:** No unbounded dictionary growth. `/health` exempt. Each connection isolated.
 
+**Resolved:** `_locks` ConcurrentDictionary removed — replaced with per-`WindowState` lock. `Sweep()` method added, `RateLimiterCleanupService` background service runs every 5 min to evict expired entries. `ConnectionId` fallback replaces shared "anon" key, preventing bucket collapse. `/health` paths exempt. 28/28 Dashboard tests pass.
+
 ---
 
 ### PA-P2-11. RunBudgetTracker memory leak
@@ -1375,7 +1377,7 @@ catch
 | **PA-1 Telemetry**   | **100** | — |
 | **PA-1 Recovery cfg**| **100** | — |
 | **PA-2 OTel**        | **100** | — |
-| **PA-2 RateLimit**   | **0** | **PA-P2-10** |
+| **PA-2 RateLimit**   | **100** | — |
 | **PA-2 BudgetLeak**  | **0** | **PA-P2-11** |
 | **PA-2 HealthCheck** | **0** | **PA-P2-12** |
 | **PA-3 Reminders**   | **0** | **PA-P3-13** |
@@ -1384,4 +1386,4 @@ catch
 | **PA-3 IntParse**    | **0** | **PA-P3-16** |
 | **PA-3 CTS leak**    | **0** | **PA-P3-17** |
 
-**17 new items. 9 resolved (PA-P0-1 through PA-P0-5, PA-P1-6 through PA-P1-8, PA-P2-9). 8 remaining, 0 ship-stoppers. 4 P2/P3 items left. NOT production ready.**
+**17 new items. 10 resolved (PA-P0-1 through PA-P0-5, PA-P1-6 through PA-P1-8, PA-P2-9, PA-P2-10). 7 remaining, 0 ship-stoppers. 2 P2/5 P3 items left. NOT production ready.**

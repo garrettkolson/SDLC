@@ -3,15 +3,10 @@ using System.Collections.Concurrent;
 
 namespace SDLC.Dashboard.Services;
 
-/// <summary>
-/// Simple fixed-window rate limiter middleware. Prevents abuse of write-heavy endpoints.
-/// Keyed by authenticated username or remote IP address.
-/// </summary>
 public class RateLimiter
 {
     private readonly int _permitLimit;
     private readonly TimeSpan _window;
-    private readonly ConcurrentDictionary<string, object> _locks = new();
     private readonly ConcurrentDictionary<string, WindowState> _windows = new();
 
     public RateLimiter(int permitLimit, TimeSpan window)
@@ -22,13 +17,11 @@ public class RateLimiter
 
     public bool Allow(string key)
     {
-        // Per-key lock for thread safety
-        var lockObj = _locks.GetOrAdd(key, _ => new object());
-        lock (lockObj)
-        {
-            var now = DateTimeOffset.UtcNow;
-            var state = _windows.GetOrAdd(key, _ => new WindowState { Start = now });
+        var now = DateTimeOffset.UtcNow;
+        var state = _windows.GetOrAdd(key, _ => new WindowState { Start = now, Count = 0 });
 
+        lock (state)
+        {
             if ((now - state.Start) > _window)
             {
                 state.Start = now;
@@ -38,6 +31,18 @@ public class RateLimiter
 
             state.Count++;
             return state.Count <= _permitLimit;
+        }
+    }
+
+    public void Sweep()
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var kvp in _windows)
+        {
+            if ((now - kvp.Value.Start) > _window)
+            {
+                _windows.TryRemove(kvp.Key, out _);
+            }
         }
     }
 
