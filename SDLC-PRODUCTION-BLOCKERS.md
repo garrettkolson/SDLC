@@ -980,6 +980,8 @@ ENTRYPOINT ["dotnet", "SDLC.Dashboard.dll"]
 
 **Done when:** `docker build` succeeds for Dashboard. Orchestrator deployment strategy clarified.
 
+**Resolved:** `SDLC.Orchestrator` is a class library (no `Main`, no `<OutputType>Exe</OutputType>`). Dockerfile deleted — orchestrator runs in-process via `PipelineRecoveryHostedService` DI inside Dashboard process. Dashboard Dockerfile fixed: `USER appuser` moved from `base` stage to `final` stage (base SDK image has no `appuser`). Dashboard build produces working container with HEALTHCHECK. All 269 tests pass across 8 projects.
+
 ---
 
 ## PA-P1 — New High Risk
@@ -1364,7 +1366,7 @@ catch
 | **PA-0 Fire-forget** | **100** | — |
 | **PA-0 Recovery**    | **100** | — |
 | **PA-0 Slack DI**    | **100** | — |
-| **PA-0 Docker**      | **0** | **PA-P0-5** |
+| **PA-0 Docker**      | **100** | — |
 | **PA-1 Slack errors**| **100** | — |
 | **PA-1 Telemetry**   | **0** | **PA-P1-7** |
 | **PA-1 Recovery cfg**| **0** | **PA-P1-8** |
@@ -1378,4 +1380,4 @@ catch
 | **PA-3 IntParse**    | **0** | **PA-P3-16** |
 | **PA-3 CTS leak**    | **0** | **PA-P3-17** |
 
-**17 new items. 5 resolved (PA-P0-1, PA-P0-2, PA-P0-3, PA-P0-4, PA-P1-6). 12 remaining, 1 ship-stopper (PA-P0-5). NOT production ready.**
+**17 new items. 6 resolved (PA-P0-1 through PA-P0-5, PA-P1-6). 11 remaining, 0 ship-stoppers. 6 P1/P2/P3 items left. NOT production ready.**
