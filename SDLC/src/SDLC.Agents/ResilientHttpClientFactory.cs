@@ -73,12 +73,12 @@ public class ResilientHttpClientFactory(
     }
 }
 
-internal record StageResilience(int Retries, int BackoffMs);
+public record StageResilience(int Retries, int BackoffMs);
 
 /// <summary>
 /// DelegatingHandler that applies Polly retry + timeout policies around HTTP calls.
 /// </summary>
-internal class ResilienceHandler : DelegatingHandler
+public class ResilienceHandler : DelegatingHandler
 {
     private readonly IAsyncPolicy<HttpResponseMessage> _resiliencePolicy;
     private readonly IAsyncPolicy<HttpResponseMessage> _timeoutPolicy;
