@@ -86,20 +86,6 @@ public class SlackNotificationServiceTests
         payload.Should().Contain($"{stage}*");
     }
 
-    // We removed notes from the payloads for now
-    // [Test]
-    // public async Task SendApprovalRequestAsync_IncludesNotesInPayload()
-    // {
-    //     var service = new SlackNotificationService(_httpClientFactory, _urlBuilder);
-    //     var notes = "Needs more detail on error handling";
-    //     var gate = new StageGate { RunId = Guid.NewGuid(), Stage = SdlcStage.Requirements, Status = GateStatus.Pending, Notes = notes };
-    //
-    //     await service.SendApprovalRequestAsync(gate);
-    //
-    //     var payload = _httpHandler.ReceivedRequest()?.Content?.ReadAsStringAsync().Result;
-    //     payload.Should().Contain(notes);
-    // }
-
     [Test]
     public async Task SendApprovalRequestAsync_ReturnsSuccessfully_WhenServerReturns200()
     {

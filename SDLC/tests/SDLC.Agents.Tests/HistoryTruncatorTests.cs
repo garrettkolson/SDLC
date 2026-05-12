@@ -43,4 +43,42 @@ public class HistoryTruncatorTests
         HistoryTruncator.Apply(history, maxTurns: 1);
         history.Should().HaveCount(3);
     }
+
+    [Test]
+    public void Apply_EmptyInput_ReturnsEmpty()
+    {
+        var history = new List<string>();
+        var result = HistoryTruncator.Apply(history, maxTurns: 10);
+        result.Should().BeEmpty();
+    }
+
+    [Test]
+    public void Apply_SingleElement_ReturnsSingleElement()
+    {
+        var history = new List<string> { "system" };
+        var result = HistoryTruncator.Apply(history, maxTurns: 10);
+        result.Should().ContainSingle("system");
+    }
+
+    [Test]
+    public void Apply_LargeInput_TruncatesCorrectly()
+    {
+        var history = new List<string> { "system" };
+        for (int i = 0; i < 100; i++)
+            history.Add($"msg{i}");
+
+        var result = HistoryTruncator.Apply(history, maxTurns: 10);
+
+        result.Count.Should().Be(21);
+        result[0].Should().Be("system");
+        result.Last().Should().Be("msg99");
+    }
+
+    [Test]
+    public void Apply_ExactlyAtLimit_ReturnsUnchanged()
+    {
+        var history = new List<string> { "system", "m1", "m2" };
+        var result = HistoryTruncator.Apply(history, maxTurns: 2);
+        result.Should().BeEquivalentTo(history);
+    }
 }
