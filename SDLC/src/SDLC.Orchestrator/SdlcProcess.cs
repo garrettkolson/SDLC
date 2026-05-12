@@ -72,18 +72,28 @@ public class PipelineRunnerService(
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _runCancellation[config.RunId] = cts;
 
-        var handle = processFactory.StartAsync(config, cts.Token);
+        ProcessHandle? handle = null;
+        try
+        {
+            handle = processFactory.StartAsync(config, cts.Token);
 
-        if (!_activeRuns.TryAdd(config.RunId, handle.Task))
+            if (!_activeRuns.TryAdd(config.RunId, handle.Task))
+            {
+                _runCancellation.TryRemove(config.RunId, out _);
+                cts.Dispose();
+                throw new InvalidOperationException($"Run {config.RunId} is already active.");
+            }
+        }
+        catch
         {
             _runCancellation.TryRemove(config.RunId, out _);
             cts.Dispose();
-            throw new InvalidOperationException($"Run {config.RunId} is already active.");
+            throw;
         }
 
         logger.LogInformation("Starting SDLC run {RunId}", config.RunId);
 
-        _ = handle.Task.ContinueWith(async t =>
+        _ = handle!.Task.ContinueWith(async t =>
         {
             using var runScope = LogScope.ForRun(config.RunId);
 

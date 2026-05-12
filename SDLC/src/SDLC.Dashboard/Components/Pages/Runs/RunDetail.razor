@@ -136,7 +136,8 @@ else
     private void StartPolling()
     {
         _cts = new CancellationTokenSource();
-        var interval = TimeSpan.FromSeconds(int.Parse(Config["Dashboard:RefreshIntervalSeconds"] ?? "5"));
+        var intervalSeconds = int.TryParse(Config["Dashboard:RefreshIntervalSeconds"], out var s) ? s : 5;
+        var interval = TimeSpan.FromSeconds(Math.Clamp(intervalSeconds, 1, 60));
         _timer = new PeriodicTimer(interval);
         _ = RefreshLoopAsync();
     }

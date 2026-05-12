@@ -59,7 +59,10 @@ builder.Services.AddHsts(o =>
 
 var dbConn = builder.Configuration.GetConnectionString("SDLCDb")
     ?? "Data Source=sdlc.db;Pooling=True;Cache=Shared;Mode=ReadWriteCreate;";
-var artifactDir = Path.Combine(AppContext.BaseDirectory, "artifacts");
+var artifactDir = builder.Configuration["Storage:ArtifactsPath"]
+    ?? (builder.Environment.IsDevelopment()
+        ? Path.Combine(AppContext.BaseDirectory, "artifacts")
+        : throw new InvalidOperationException("Storage:ArtifactsPath required in production"));
 
 var dbFactory = new SDLC.Infrastructure.SqlDbConnectionFactory(dbConn);
 builder.Services.AddSingleton<SDLC.Infrastructure.IDbConnectionFactory>(dbFactory);
@@ -142,7 +145,10 @@ builder.Services.AddHostedService<PipelineRecoveryHostedService>();
 builder.Services.AddHostedService<PipelineShutdownService>();
 
 // Backup service
-var backupsDir = Path.Combine(AppContext.BaseDirectory, "backups");
+var backupsDir = builder.Configuration["Storage:BackupsPath"]
+    ?? (builder.Environment.IsDevelopment()
+        ? Path.Combine(AppContext.BaseDirectory, "backups")
+        : throw new InvalidOperationException("Storage:BackupsPath required in production"));
 builder.Services.Configure<BackupConfig>(cfg =>
 {
     cfg.BackupsDirectory = backupsDir;

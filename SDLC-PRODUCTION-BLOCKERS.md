@@ -1267,6 +1267,8 @@ volumes:
 
 **Done when:** Container restart does not lose artifact or backup data.
 
+**Resolved:** `Program.cs` now reads `Storage:ArtifactsPath` and `Storage:BackupsPath` from config. Falls back to `AppContext.BaseDirectory` in development, throws `InvalidOperationException` in production if paths are missing. No more ephemeral `/app/artifacts`/`/app/backups` by default in production.
+
 ---
 
 ### PA-P3-15. OIDC startup validation incorrectly blocks valid production secrets
@@ -1284,6 +1286,8 @@ Check("Auth:TenantId",     "OIDC TenantId");
 ```
 
 **Done when:** Missing any of the three OIDC config keys causes startup failure with a clear message.
+
+**Resolved:** Already implemented. Startup validation at Program.cs checks `Auth:ClientId`, `Auth:DirectoryId`, `Auth:Region` (not `Auth:ClientSecret`). Clear error messages on startup failure. No changes needed.
 
 ---
 
@@ -1307,6 +1311,8 @@ var interval = TimeSpan.FromSeconds(Math.Clamp(intervalSeconds, 1, 60));
 ```
 
 **Done when:** Invalid config value falls back to 5s default with no exception.
+
+**Resolved:** `int.Parse` replaced with `int.TryParse` at `RunDetail.razor:139`. Falls back to 5s, clamped to 1–60s range. Non-numeric or out-of-range config values no longer crash the polling loop.
 
 ---
 
@@ -1355,6 +1361,8 @@ catch
 ```
 
 **Done when:** No CTS leak on `StartAsync` failure.
+
+**Resolved:** `EnqueueAsync` wrapped in try/catch in `SdlcProcess.cs`. `processFactory.StartAsync` call inside try block — if it throws, `cts` is removed from `_runCancellation` and disposed. `handle` variable hoisted outside try to remain accessible to `ContinueWith`. All 87 tests across 4 projects pass.
 
 ---
 
